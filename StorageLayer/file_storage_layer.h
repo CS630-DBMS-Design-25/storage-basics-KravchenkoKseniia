@@ -50,7 +50,6 @@ public:
         const std::optional<std::function<bool(int, const std::vector<uint8_t>&)>>& callback = std::nullopt,
         const std::optional<std::vector<int>>& projection = std::nullopt,
         const std::optional<std::function<bool(const std::vector<uint8_t>&)>>& filter_func = std::nullopt) override;
-    void flush() override;
 
     bool create_table(const std::string& table_name/*, const std::vector<Column>& table_schema*/);
     bool drop_table(const std::string& table_name);

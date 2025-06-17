@@ -329,11 +329,6 @@ std::vector<std::vector<uint8_t>> FileStorageLayer::scan(
     return std::vector<std::vector<uint8_t>>();
 }
 
-void FileStorageLayer::flush() {
-    // TODO: Implement this method to flush data to disk
-    // Implement flush logic
-}
-
 bool FileStorageLayer::create_table(const std::string& table_name/*, const std::vector<Column>& schema*/) {
     if (!is_open) {
 		std::cout << "Storage is not open. Cannot create table." << std::endl;
