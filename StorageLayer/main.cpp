@@ -8,16 +8,19 @@
 
 void print_help() {
     std::cout << "Storage Layer CLI - Available commands:\n"
-        << "  open <path>                  - Open storage at specified path\n"
-        << "  close                        - Close the storage\n"
-        << "  insert <table> <record>      - Insert a record\n"
-        << "  get <table> <record_id>      - Get a record by ID\n"
-        << "  update <table> <record_id> <record> - Update a record\n"
-        << "  delete <table> <record_id>   - Delete a record\n"
-        << "  scan <table> [--projection <field1> <field2> ...] - Scan records in a table\n"
-        << "  flush                        - Flush data to disk\n"
-        << "  help                         - Display this help message\n"
-        << "  exit/quit                    - Exit the program\n";
+        << "  open <path>                              - Open storage at specified path (not implemented yet)\n"
+        << "  close                                    - Close the storage (not implemented yet)\n"
+		<< "  create <table name>                      - Create a new table (not implemented yet)\n"
+		<< "  drop <table name>                        - Drop an existing table (not implemented yet)\n"
+		<< "  list                                     - List all tables (not implemented yet)\n"
+        << "  insert <table name> <record>             - Insert a record (not implemented yet)\n"
+        << "  get <table name> <record_id>             - Get a record by ID (not implemented yet)\n"
+        << "  update <table name> <record_id> <record> - Update a record (not implemented yet)\n"
+        << "  delete <table name> <record_id>          - Delete a record (not implemented yet)\n"
+        << "  scan <table name> [--projection <field1> <field2> ...] - Scan records in a table (not implemented yet)\n"
+        << "  flush                                    - Flush data to disk (not implemented yet)\n"
+        << "  help                                     - Display this help message (not implemented yet)\n"
+        << "  exit/quit                                - Exit the program (not implemented yet)\n";
 }
 
 // Convert a string to a vector of bytes
@@ -149,6 +152,12 @@ int main() {
                 continue;
             }
 
+            try {
+				std::cout << "Will be implemented in future versions.\n";
+            }
+            catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << std::endl;
+            }
         }
         else if (command == "flush") {
             try {
@@ -159,6 +168,44 @@ int main() {
                 std::cout << "Error: " << e.what() << std::endl;
             }
         }
+        else if (command == "create") {
+            if (args.size() < 2) {
+                std::cout << "Error: Missing table name argument. Usage: create <table name>\n";
+                continue;
+            }
+            try {
+                storage.create_table(args[1]);
+                std::cout << "Table '" << args[1] << "' created\n";
+            }
+            catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << std::endl;
+            }
+        }
+        else if (command == "drop") {
+            if (args.size() < 2) {
+                std::cout << "Error: Missing table name argument. Usage: drop <table name>\n";
+                continue;
+            }
+            try {
+                storage.drop_table(args[1]);
+                std::cout << "Table '" << args[1] << "' dropped\n";
+            }
+            catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << std::endl;
+            }
+		}
+        else if (command == "list") {
+            try {
+                auto tables = storage.list_tables();
+                std::cout << "Tables:\n";
+                for (const auto& table : tables) {
+                    std::cout << "  " << table << "\n";
+                }
+            }
+            catch (const std::exception& e) {
+                std::cout << "Error: " << e.what() << std::endl;
+            }
+		}
         else {
             std::cout << "Unknown command: " << command << "\nType 'help' for available commands\n";
         }

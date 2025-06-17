@@ -55,6 +55,12 @@ public:
      * Persist all buffered data immediately to disk.
      */
     virtual void flush() = 0;
+
+	virtual void create_table(const std::string& table_name) = 0;
+
+    virtual void drop_table(const std::string& table_name) = 0;
+    virtual bool table_exists(const std::string& table_name) = 0;
+	virtual std::vector<std::string> list_tables() = 0;
 };
 
 /**
@@ -79,6 +85,10 @@ public:
         const std::optional<std::function<bool(const std::vector<uint8_t>&)>>& filter_func = std::nullopt) override;
     void flush() override;
 
+	void create_table(const std::string& table_name) override;
+    void drop_table(const std::string& table_name) override;
+    bool table_exists(const std::string& table_name) override;
+	std::vector<std::string> list_tables() override;
 private:
     bool is_open;
     std::string storage_path;
