@@ -13,14 +13,14 @@ void print_help() {
 		<< "  create <table name>                      - Create a new table\n"
 		<< "  drop <table name>                        - Drop an existing table\n"
 		<< "  list                                     - List all tables\n"
-        << "  insert <table name> <record>             - Insert a record (not implemented yet)\n"
-        << "  get <table name> <record_id>             - Get a record by ID (not implemented yet)\n"
+        << "  insert <table name> <record>             - Insert a record\n"
+        << "  get <table name> <record_id>             - Get a record by ID\n"
         << "  update <table name> <record_id> <record> - Update a record (not implemented yet)\n"
         << "  delete <table name> <record_id>          - Delete a record (not implemented yet)\n"
         << "  scan <table name> [--projection <field1> <field2> ...] - Scan records in a table (not implemented yet)\n"
         << "  flush                                    - Flush data to disk (not implemented yet)\n"
-        << "  help                                     - Display this help message (not implemented yet)\n"
-        << "  exit/quit                                - Exit the program (not implemented yet)\n";
+        << "  help                                     - Display this help message\n"
+        << "  exit/quit                                - Exit the program\n";
 }
 
 // Convert a string to a vector of bytes
@@ -98,6 +98,12 @@ int main() {
             }
             try {
                 int record_id = storage.insert(args[1], string_to_bytes(args[2]));
+
+                if (record_id < 0) {
+                    std::cout << "Error: Failed to insert record. Table may not exist.\n";
+                    continue;
+				}
+
                 std::cout << "Record inserted with ID " << record_id << std::endl;
             }
             catch (const std::exception& e) {
@@ -112,6 +118,12 @@ int main() {
             try {
                 int record_id = std::stoi(args[2]);
                 auto record = storage.get(args[1], record_id);
+
+                if (record.empty()) {
+                    std::cout << "Error: Record not found\n";
+                    continue;
+				}
+
                 std::cout << "Retrieved record: " << bytes_to_string(record) << std::endl;
             }
             catch (const std::exception& e) {
@@ -125,7 +137,13 @@ int main() {
             }
             try {
                 int record_id = std::stoi(args[2]);
-                storage.update(args[1], record_id, string_to_bytes(args[3]));
+                bool isSuccess = storage.update(args[1], record_id, string_to_bytes(args[3]));
+
+                if (!isSuccess) {
+                    std::cout << "Error: Failed to update record. Record may not exist.\n";
+					continue;
+				}
+
                 std::cout << "Record updated\n";
             }
             catch (const std::exception& e) {
@@ -139,7 +157,13 @@ int main() {
             }
             try {
                 int record_id = std::stoi(args[2]);
-                storage.delete_record(args[1], record_id);
+                bool isSucces = storage.delete_record(args[1], record_id);
+
+                if (!isSucces) {
+					std::cout << "Error: Failed to delete record. Record may not exist.\n";
+					continue;
+				}
+
                 std::cout << "Record deleted\n";
             }
             catch (const std::exception& e) {

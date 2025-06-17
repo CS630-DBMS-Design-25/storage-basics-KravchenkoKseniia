@@ -16,6 +16,23 @@ struct PageHeader {
 	uint32_t reserved; // Reserved for future use
 };
 
+enum class DataType {
+    INT,
+    VARCHAR,
+	UNKNOWN
+};
+
+struct Column {
+    std::string name;
+    DataType type;
+    size_t size; // Size for VARCHAR, ignored for INT
+};
+
+struct TableSchema {
+    std::string name;
+    std::vector<Column> columns;
+};
+
 class FileStorageLayer : public StorageLayer {
 public:
     FileStorageLayer();
@@ -25,8 +42,8 @@ public:
     void close() override;
     int insert(const std::string& table, const std::vector<uint8_t>& record) override;
     std::vector<uint8_t> get(const std::string& table, int record_id) override;
-    void update(const std::string& table, int record_id, const std::vector<uint8_t>& updated_record) override;
-    void delete_record(const std::string& table, int record_id) override;
+    bool update(const std::string& table, int record_id, const std::vector<uint8_t>& updated_record) override;
+    bool delete_record(const std::string& table, int record_id) override;
     std::vector<std::vector<uint8_t>> scan(
         const std::string& table,
         const std::optional<std::function<bool(int, const std::vector<uint8_t>&)>>& callback = std::nullopt,
@@ -34,12 +51,21 @@ public:
         const std::optional<std::function<bool(const std::vector<uint8_t>&)>>& filter_func = std::nullopt) override;
     void flush() override;
 
-    bool create_table(const std::string& table_name);
+    bool create_table(const std::string& table_name/*, const std::vector<Column>& table_schema*/);
     bool drop_table(const std::string& table_name);
     std::vector<std::string> list_tables();
 private:
 	void ensure_directory_exists(const std::string& path);
+	bool is_table_exists(const std::string& table_name) const;
+	int make_record_id(uint16_t page, uint16_t slot) const;
+	void split_record_id(int record_id, uint16_t& page, uint16_t& slot);
     bool is_open;
     std::string storage_path;
+	//std::unordered_map<std::string, TableSchema> table_schemas;
+
+	//bool save_table_schema(const std::string& table_name);
+	//bool load_table_schema(const std::string& table_name);
+
+ //   std::vector<uint8_t> encode_record(const std::string& table, const std::vector<std::string>& values);
 };
 

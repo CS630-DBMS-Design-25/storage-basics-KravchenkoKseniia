@@ -35,12 +35,12 @@ public:
     /**
      * Update an existing record identified by record ID.
      */
-    virtual void update(const std::string& table, int record_id, const std::vector<uint8_t>& updated_record) = 0;
+    virtual bool update(const std::string& table, int record_id, const std::vector<uint8_t>& updated_record) = 0;
 
     /**
      * Delete a record identified by its unique ID.
      */
-    virtual void delete_record(const std::string& table, int record_id) = 0;
+    virtual bool delete_record(const std::string& table, int record_id) = 0;
 
     /**
      * Scan records in a table optionally using projection and filter. Callback is optional.
