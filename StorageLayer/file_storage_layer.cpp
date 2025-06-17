@@ -183,6 +183,11 @@ std::vector<uint8_t> FileStorageLayer::get(const std::string& table, int record_
 		return std::vector<uint8_t>();
 	}
 
+    if (slot_offset == DELETE_SLOT) {
+        std::cout << "Slot is marked as deleted." << std::endl;
+        return std::vector<uint8_t>();
+	}
+
 	// Read the record size
 	uint32_t record_size;
 	page.seekg(page_num * PAGE_SIZE + slot_offset);
@@ -212,11 +217,103 @@ bool FileStorageLayer::update(const std::string& table, int record_id, const std
         std::cout << "Table does not exist." << std::endl;
         return false; 
     }
+
+	auto old_record = get(table, record_id);
+
+    if (old_record.empty()) {
+        std::cout << "Record not found." << std::endl;
+        return false; 
+    }
+
+    if (updated_record.size() <= old_record.size()) {
+        // If the updated record is smaller or equal in size, we can overwrite it
+        auto tableFile = std::filesystem::path(storage_path) / (table + ".db");
+        std::fstream page(tableFile, std::ios::binary | std::ios::in | std::ios::out);
+
+        if (!page.is_open()) {
+            std::cout << "Failed to open table file." << std::endl;
+            return false;
+        }
+
+        uint16_t page_num, slot_num;
+        split_record_id(record_id, page_num, slot_num);
+        PageHeader header;
+        page.seekg(page_num * PAGE_SIZE);
+        page.read(reinterpret_cast<char*>(&header), sizeof(header));
+        
+        if (slot_num >= header.slot_count) {
+            std::cout << "Slot number out of bounds." << std::endl;
+            return false;
+        }
+        
+        // Read the slot offset
+        uint16_t slot_offset;
+        page.seekg(page_num * PAGE_SIZE + sizeof(PageHeader) + slot_num * sizeof(uint16_t));
+        page.read(reinterpret_cast<char*>(&slot_offset), sizeof(slot_offset));
+        
+        if (slot_offset == 0) {
+            std::cout << "Slot is empty." << std::endl;
+            return false;
+        }
+        
+        // Write the updated record
+        page.seekp(page_num * PAGE_SIZE + slot_offset);
+        uint32_t new_record_size = updated_record.size();
+        page.write(reinterpret_cast<const char*>(&new_record_size), sizeof(new_record_size));
+        page.write(reinterpret_cast<const char*>(updated_record.data()), new_record_size);
+        
+        return true; // Update successful
+    }
+    else {
+		delete_record(table, record_id);
+		return insert(table, updated_record) != -1; // Reinsert the updated record
+    }
 }
 
 bool FileStorageLayer::delete_record(const std::string& table, int record_id) {
     // TODO: Implement this method to delete a record
     // Implement delete logic
+
+    if (!is_open) {
+        std::cout << "Storage is not open. Cannot delete record." << std::endl;
+        return false;
+	}
+
+    if (!is_table_exists(table)) {
+        std::cout << "Table does not exist." << std::endl;
+        return false; 
+	}
+
+	auto tableFile = std::filesystem::path(storage_path) / (table + ".db");
+
+	std::fstream page(tableFile, std::ios::binary | std::ios::in | std::ios::out);
+
+    if (!page.is_open()) {
+        std::cout << "Failed to open table file." << std::endl;
+		return false;
+	}
+
+	uint16_t page_num, slot_num;
+	split_record_id(record_id, page_num, slot_num);
+
+    if (page_num < 0 || slot_num < 0) {
+        std::cout << "Invalid record ID." << std::endl;
+		return false;
+	}
+
+	PageHeader header;
+	page.seekg(page_num * PAGE_SIZE);
+	page.read(reinterpret_cast<char*>(&header), sizeof(header));
+
+    if (slot_num >= header.slot_count) {
+		std::cout << "Slot number out of bounds." << std::endl;
+		return false;
+	}
+
+	uint16_t slot_position = page_num * PAGE_SIZE + sizeof(PageHeader) + slot_num * sizeof(uint16_t);
+	page.seekg(slot_position);
+	page.write(reinterpret_cast<const char*>(&DELETE_SLOT), sizeof(DELETE_SLOT)); // Mark slot as deleted
+	page.flush();
 
     return true;
 }

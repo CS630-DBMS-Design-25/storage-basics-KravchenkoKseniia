@@ -9,6 +9,7 @@
 #include "storage_layer.h"
 
 static const int PAGE_SIZE = 4096; // Size of a page in bytes
+static const uint16_t DELETE_SLOT = 0xFFFF; // Special value to indicate a deleted slot
 
 struct PageHeader {
 	uint16_t slot_count; // Number of slots in the page
