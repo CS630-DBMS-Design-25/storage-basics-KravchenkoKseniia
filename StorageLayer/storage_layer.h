@@ -55,10 +55,4 @@ public:
      * Persist all buffered data immediately to disk.
      */
     virtual void flush() = 0;
-
-	virtual void create_table(const std::string& table_name) = 0;
-
-    virtual void drop_table(const std::string& table_name) = 0;
-    virtual bool table_exists(const std::string& table_name) = 0;
-	virtual std::vector<std::string> list_tables() = 0;
 };

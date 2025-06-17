@@ -8,11 +8,11 @@
 
 void print_help() {
     std::cout << "Storage Layer CLI - Available commands:\n"
-        << "  open <path>                              - Open storage at specified path (not implemented yet)\n"
-        << "  close                                    - Close the storage (not implemented yet)\n"
-		<< "  create <table name>                      - Create a new table (not implemented yet)\n"
-		<< "  drop <table name>                        - Drop an existing table (not implemented yet)\n"
-		<< "  list                                     - List all tables (not implemented yet)\n"
+        << "  open <path>                              - Open storage at specified path\n"
+        << "  close                                    - Close the storage\n"
+		<< "  create <table name>                      - Create a new table\n"
+		<< "  drop <table name>                        - Drop an existing table\n"
+		<< "  list                                     - List all tables\n"
         << "  insert <table name> <record>             - Insert a record (not implemented yet)\n"
         << "  get <table name> <record_id>             - Get a record by ID (not implemented yet)\n"
         << "  update <table name> <record_id> <record> - Update a record (not implemented yet)\n"
@@ -174,7 +174,13 @@ int main() {
                 continue;
             }
             try {
-                storage.create_table(args[1]);
+                bool isSuccess = storage.create_table(args[1]);
+
+                if (!isSuccess) {
+                    std::cout << "Error: Table '" << args[1] << "' already exists\n";
+                    continue;
+				}
+
                 std::cout << "Table '" << args[1] << "' created\n";
             }
             catch (const std::exception& e) {
@@ -187,7 +193,13 @@ int main() {
                 continue;
             }
             try {
-                storage.drop_table(args[1]);
+                bool isSuccess = storage.drop_table(args[1]);
+
+                if (!isSuccess) {
+                    std::cout << "Error: Table '" << args[1] << "' does not exist\n";
+					continue;
+				}
+
                 std::cout << "Table '" << args[1] << "' dropped\n";
             }
             catch (const std::exception& e) {
@@ -197,6 +209,12 @@ int main() {
         else if (command == "list") {
             try {
                 auto tables = storage.list_tables();
+
+                if (tables.empty()) {
+                    std::cout << "No tables found.\n";
+					continue;
+				}
+
                 std::cout << "Tables:\n";
                 for (const auto& table : tables) {
                     std::cout << "  " << table << "\n";

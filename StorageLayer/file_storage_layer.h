@@ -1,8 +1,20 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <functional>
+#include <optional>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include "storage_layer.h"
 
+static const int PAGE_SIZE = 4096; // Size of a page in bytes
+
+struct PageHeader {
+	uint16_t slot_count; // Number of slots in the page
+	uint16_t free_space_offset; // Offset to the next free space in the page
+	uint32_t reserved; // Reserved for future use
+};
 
 class FileStorageLayer : public StorageLayer {
 public:
@@ -22,13 +34,12 @@ public:
         const std::optional<std::function<bool(const std::vector<uint8_t>&)>>& filter_func = std::nullopt) override;
     void flush() override;
 
-    void create_table(const std::string& table_name) override;
-    void drop_table(const std::string& table_name) override;
-    bool table_exists(const std::string& table_name) override;
-    std::vector<std::string> list_tables() override;
+    bool create_table(const std::string& table_name);
+    bool drop_table(const std::string& table_name);
+    std::vector<std::string> list_tables();
 private:
+	void ensure_directory_exists(const std::string& path);
     bool is_open;
     std::string storage_path;
-    // Add any other necessary instance variables here
 };
 
