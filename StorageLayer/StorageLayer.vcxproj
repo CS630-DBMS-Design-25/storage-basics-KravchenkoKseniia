@@ -124,10 +124,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="file_storage_layer.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="storage_layer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="file_storage_layer.h" />
     <ClInclude Include="storage_layer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
