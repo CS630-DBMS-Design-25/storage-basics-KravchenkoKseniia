@@ -94,7 +94,7 @@ int FileStorageLayer::insert(const std::string& table, const std::vector<uint8_t
     while (true) {
         if (page_num >= num_pages) {
             // If we reach the end of the file, we need to create a new page
-            header = { 0, (uint16_t)PAGE_SIZE, 0 };
+            header = { 0, (uint16_t)PAGE_SIZE };
             page.seekp(page_num * PAGE_SIZE);
             page.write(reinterpret_cast<const char*>(&header), sizeof(header));
             break;
@@ -201,7 +201,7 @@ std::vector<uint8_t> FileStorageLayer::get(const std::string& table, int record_
         return std::vector<uint8_t>();
 	}
 
-    return record_data; // Replace with actual implementation
+    return record_data;
 }
 
 bool FileStorageLayer::update(const std::string& table, int record_id, const std::vector<uint8_t>& updated_record) {
@@ -345,7 +345,7 @@ bool FileStorageLayer::create_table(const std::string& table_name/*, const std::
 
     std::ofstream page(tableFile, std::ios::binary);
 
-    PageHeader header{ 0, (uint16_t)PAGE_SIZE, 0 };
+    PageHeader header{ 0, (uint16_t)PAGE_SIZE };
 	page.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
     if (!page) {

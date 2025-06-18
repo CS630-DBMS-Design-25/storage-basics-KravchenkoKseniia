@@ -15,10 +15,10 @@ void print_help() {
 		<< "  list                                     - List all tables\n"
         << "  insert <table name> <record>             - Insert a record\n"
         << "  get <table name> <record_id>             - Get a record by ID\n"
-        << "  update <table name> <record_id> <record> - Update a record (not implemented yet)\n"
-        << "  delete <table name> <record_id>          - Delete a record (not implemented yet)\n"
+        << "  update <table name> <record_id> <record> - Update a record\n"
+        << "  delete <table name> <record_id>          - Delete a record\n"
         << "  scan <table name> [--projection <field1> <field2> ...] - Scan records in a table (not implemented yet)\n"
-        << "  flush                                    - Flush data to disk (not implemented yet)\n"
+        //<< "  flush                                    - Flush data to disk (not implemented yet)\n"
         << "  help                                     - Display this help message\n"
         << "  exit/quit                                - Exit the program\n";
 }
@@ -183,15 +183,15 @@ int main() {
                 std::cout << "Error: " << e.what() << std::endl;
             }
         }
-        else if (command == "flush") {
-            try {
-                storage.flush();
-                std::cout << "Storage flushed\n";
-            }
-            catch (const std::exception& e) {
-                std::cout << "Error: " << e.what() << std::endl;
-            }
-        }
+        //else if (command == "flush") {
+        //    try {
+        //        storage.flush();
+        //        std::cout << "Storage flushed\n";
+        //    }
+        //    catch (const std::exception& e) {
+        //        std::cout << "Error: " << e.what() << std::endl;
+        //    }
+        //}
         else if (command == "create") {
             if (args.size() < 2) {
                 std::cout << "Error: Missing table name argument. Usage: create <table name>\n";

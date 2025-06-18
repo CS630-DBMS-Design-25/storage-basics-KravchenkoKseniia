@@ -51,8 +51,8 @@ public:
         const std::optional<std::vector<int>>& projection = std::nullopt,
         const std::optional<std::function<bool(const std::vector<uint8_t>&)>>& filter_func = std::nullopt) = 0;
 
-    /**
-     * Persist all buffered data immediately to disk.
-     */
-    virtual void flush() = 0;
+    ///**
+    // * Persist all buffered data immediately to disk.
+    // */
+    //virtual void flush() = 0;
 };

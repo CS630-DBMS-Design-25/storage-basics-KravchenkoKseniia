@@ -14,25 +14,24 @@ static const uint16_t DELETE_SLOT = 0xFFFF; // Special value to indicate a delet
 struct PageHeader {
 	uint16_t slot_count; // Number of slots in the page
 	uint16_t free_space_offset; // Offset to the next free space in the page
-	uint32_t reserved; // Reserved for future use
 };
 
-enum class DataType {
-    INT,
-    VARCHAR,
-	UNKNOWN
-};
-
-struct Column {
-    std::string name;
-    DataType type;
-    size_t size; // Size for VARCHAR, ignored for INT
-};
-
-struct TableSchema {
-    std::string name;
-    std::vector<Column> columns;
-};
+//enum class DataType {
+//    INT,
+//    VARCHAR,
+//	UNKNOWN
+//};
+//
+//struct Column {
+//    std::string name;
+//    DataType type;
+//    size_t size; // Size for VARCHAR, ignored for INT
+//};
+//
+//struct TableSchema {
+//    std::string name;
+//    std::vector<Column> columns;
+//};
 
 class FileStorageLayer : public StorageLayer {
 public:
@@ -54,6 +53,7 @@ public:
     bool create_table(const std::string& table_name/*, const std::vector<Column>& table_schema*/);
     bool drop_table(const std::string& table_name);
     std::vector<std::string> list_tables();
+	bool vacuum(const std::string& table_name); // willbe implemented later
 private:
 	void ensure_directory_exists(const std::string& path);
 	bool is_table_exists(const std::string& table_name) const;
@@ -61,11 +61,10 @@ private:
 	void split_record_id(int record_id, uint16_t& page, uint16_t& slot);
     bool is_open;
     std::string storage_path;
-	//std::unordered_map<std::string, TableSchema> table_schemas;
 
+	//std::unordered_map<std::string, TableSchema> table_schemas;
 	//bool save_table_schema(const std::string& table_name);
 	//bool load_table_schema(const std::string& table_name);
-
- //   std::vector<uint8_t> encode_record(const std::string& table, const std::vector<std::string>& values);
+    //std::vector<uint8_t> encode_record(const std::string& table, const std::vector<std::string>& values);
 };
 
