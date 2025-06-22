@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include "storage_layer.h"
+#include "table_schema.h"
 
 static const int PAGE_SIZE = 4096; // Size of a page in bytes
 static const uint16_t DELETE_SLOT = 0xFFFF; // Special value to indicate a deleted slot
@@ -34,7 +35,7 @@ public:
         const std::optional<std::vector<int>>& projection = std::nullopt,
         const std::optional<std::function<bool(const std::vector<uint8_t>&)>>& filter_func = std::nullopt) override;
 
-    bool create_table(const std::string& table_name);
+    bool create_table(const std::string& table_name, const TableSchema& schema);
     bool drop_table(const std::string& table_name);
     std::vector<std::string> list_tables();
 	bool vacuum(const std::string& table_name);
@@ -43,9 +44,14 @@ private:
 	bool is_vacuum;
     std::string storage_path;
 
+	std::unordered_map<std::string, TableSchema> table_schemas;
+
 	void ensure_directory_exists(const std::string& path);
 	bool is_table_exists(const std::string& table_name) const;
+
 	int make_record_id(uint16_t page, uint16_t slot) const;
 	void split_record_id(int record_id, uint16_t& page, uint16_t& slot);
+
+	void load_table_schemas();
 };
 

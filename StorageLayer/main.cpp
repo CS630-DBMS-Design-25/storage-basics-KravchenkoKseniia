@@ -5,12 +5,13 @@
 #include <unordered_map>
 #include <algorithm>
 #include "file_storage_layer.h"
+#include "table_schema.h"
 
 void print_help() {
     std::cout << "Storage Layer CLI - Available commands:\n"
         << "  open <path>                              - Open storage at specified path\n"
         << "  close                                    - Close the storage\n"
-		<< "  create <table name>                      - Create a new table\n"
+		<< "  create <table name> <schema>             - Create a new table\n"
 		<< "  drop <table name>                        - Drop an existing table\n"
 		<< "  list                                     - List all tables\n"
         << "  insert <table name> <record>             - Insert a record\n"
@@ -43,6 +44,19 @@ std::vector<std::string> parse_args(const std::string& input) {
     }
 
     return args;
+}
+
+// Split schema string into a vector of field names
+std::vector<std::string> split_vector_by_delimeter(const std::string& schema, char delimeter = ',') {
+    std::vector<std::string> fields;
+    std::stringstream ss(schema);
+    std::string field;
+    
+    while (std::getline(ss, field, delimeter)) {
+		fields.push_back(field);
+    }
+
+	return fields;
 }
 
 int main() {
@@ -218,19 +232,70 @@ int main() {
             }
         }
         else if (command == "create") {
-            if (args.size() < 2) {
+            if (args.size() < 3) {
                 std::cout << "Error: Missing table name argument. Usage: create <table name>\n";
                 continue;
             }
             try {
-                bool isSuccess = storage.create_table(args[1]);
+				std::string table_name = args[1];
+				std::string schema = args[2];
+
+				TableSchema table_schema;
+
+				std::vector<std::string> fields = split_vector_by_delimeter(schema);
+				bool isSuccess = true;
+
+                for (const auto& field : fields) {
+					std::vector<std::string> field_parts = split_vector_by_delimeter(field, ':'); // Split by ':' to get field name and type
+
+                    if (field_parts.size() != 2) {
+                        std::cout << "Error: Invalid field definition '" << field << "'. Expected format: <field_name>:<field_type>\n";
+                        isSuccess = false;
+                        break;
+                    }
+
+					Column column;
+					column.name = field_parts[0];
+					std::string field_type = field_parts[1];
+
+                    if (field_type == "INT") {
+						column.type = DataType::INT;
+						column.length = sizeof(int);
+                    }
+                    else if (field_type.rfind("VARCHAR(", 0) == 0) {
+						column.type = DataType::VARCHAR;
+						std::string length_str = field_type.substr(8, field_type.size() - 9); // Extract length from VARCHAR(length)
+						try {
+							column.length = std::stoi(length_str);
+						}
+						catch (const std::exception& e) {
+							std::cout << "Error: Invalid VARCHAR length '" << length_str << "'. Must be an integer.\n";
+							isSuccess = false;
+							break;
+                        }
+                    }
+                    else {
+                        std::cout << "Error: Unsupported field type '" << field_type << "'. Supported types are INT and VARCHAR(n).\n";
+                        isSuccess = false;
+                        break;
+					}
+
+					table_schema.columns.push_back(column);
+                }
 
                 if (!isSuccess) {
-                    std::cout << "Error: Table '" << args[1] << "' already exists\n";
+                    std::cout << "Error: Failed to create table due to invalid schema" << std::endl;
                     continue;
-				}
+                }
+                bool isCreated = storage.create_table(table_name, table_schema);
 
-                std::cout << "Table '" << args[1] << "' created\n";
+                if (!isCreated) {
+                    std::cout << "Error: Table '" << table_name << "' already exists" << std::endl;
+                }
+                else {
+                    std::cout << "Table '" << table_name << "' created with schema: " << schema << std::endl;
+                }
+				continue;
             }
             catch (const std::exception& e) {
                 std::cout << "Error: " << e.what() << std::endl;
