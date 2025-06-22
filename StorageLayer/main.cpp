@@ -175,28 +175,39 @@ int main() {
                 continue;
             }
 
-			std::optional<std::vector<int>> projection;
 			std::string table = args[1];
+
+            std::vector<int> projection;
+            bool is_projection_provided = false;
             
             if (args.size() > 2 && args[2] == "--projection") {
-				std::vector<int> indices;
+                is_projection_provided = true;
                 
                 for (size_t i = 3; i < args.size(); ++i) {
                     try {
-                        indices.push_back(std::stoi(args[i]));
+                        projection.push_back(std::stoi(args[i]));
                     }
                     catch (const std::exception& e) {
                         std::cout << "Error: Invalid projection index '" << args[i] << "'. Must be an integer.\n";
                         continue;
                     }
 				}
-
-				projection = indices;
 			}
 
             auto callback = [&](int rid, const std::vector<uint8_t>& record) {
-                std::cout << "Record[" << rid << "]:"  << bytes_to_string(record) << std::endl;
-                return true;
+				std::vector<uint8_t> output_record;
+                if (is_projection_provided) {
+                    for (int index : projection) {
+                        if (index < 0 || index >= record.size()) {
+                            std::cout << "Error: Projection index " << index << " out of bounds for record size " << record.size() << std::endl;
+                        }
+                        output_record.push_back(record[index]);
+                    }
+                } else {
+                    output_record = record; // No projection
+                }
+				std::cout << "Record[" << rid << "]: " << bytes_to_string(output_record) << std::endl;
+				return true;
 			};
 
             try {
