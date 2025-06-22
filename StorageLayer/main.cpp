@@ -18,21 +18,10 @@ void print_help() {
         << "  get <table name> <record_id>             - Get a record by ID\n"
         << "  update <table name> <record_id> <record> - Update a record\n"
         << "  delete <table name> <record_id>          - Delete a record\n"
-        << "  scan <table name> [--projection <field1> <field2> ...] - Scan records in a table (not implemented yet)\n"
+        << "  scan <table name> [--projection <field1> <field2> ...] - Scan records in a table\n"
         << "  help                                     - Display this help message\n"
         << "  exit/quit                                - Exit the program\n";
 }
-
-// Convert a string to a vector of bytes
-std::vector<uint8_t> string_to_bytes(const std::string& str) {
-    return std::vector<uint8_t>(str.begin(), str.end());
-}
-
-// Convert a vector of bytes to a string
-std::string bytes_to_string(const std::vector<uint8_t>& bytes) {
-    return std::string(bytes.begin(), bytes.end());
-}
-
 // Parse command line arguments
 std::vector<std::string> parse_args(const std::string& input) {
     std::vector<std::string> args;
