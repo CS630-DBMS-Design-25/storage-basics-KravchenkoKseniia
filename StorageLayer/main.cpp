@@ -59,6 +59,80 @@ std::vector<std::string> split_vector_by_delimeter(const std::string& schema, ch
 	return fields;
 }
 
+// schema fields into bytes
+static std::vector<uint8_t> schema_to_bytes(const TableSchema& schema, const std::vector<std::string>& fields) {
+	std::vector<uint8_t> bytes;
+
+    for (size_t i = 0; i < schema.columns.size(); i++) {
+        const Column& column = schema.columns[i];
+        const std::string& value = i < fields.size() ? fields[i] : "";
+
+        if (column.type == DataType::INT) {
+            int int_value = 0;
+            
+            if (!value.empty()) {
+                int_value = std::stoi(value);
+            }
+
+			uint8_t buffer[sizeof(int)];
+			std::memcpy(buffer, &int_value, sizeof(int));
+            bytes.insert(bytes.end(), buffer, buffer + sizeof(int));
+        }
+        else if (column.type == DataType::VARCHAR) {
+			uint16_t length = value.size() < column.length ? value.size() : column.length;
+			uint8_t length_buffer[sizeof(uint16_t)];
+			std::memcpy(length_buffer, &length, sizeof(uint16_t));
+			bytes.insert(bytes.end(), length_buffer, length_buffer + sizeof(uint16_t));
+            bytes.insert(bytes.end(), value.begin(), value.begin() + length); // Insert only up to the defined length
+        }  
+        else {
+			std::cout << "Unsupported data type in schema: " << column.name << std::endl;
+			return {};
+        } 
+    }
+
+    return bytes;
+}
+
+// Convert a vector of bytes to a vector of strings
+static std::vector<std::string> bytes_to_fields(const TableSchema& schema, const std::vector<uint8_t>& bytes) {
+    std::vector<std::string> fields;
+    size_t offset = 0;
+
+    for (const auto& column : schema.columns) {
+        if (column.type == DataType::INT) {
+            if (offset + sizeof(int) > bytes.size()) {
+                std::cout << "Error: Not enough bytes for INT field\n";
+                return {};  
+            }
+            int value;
+            std::memcpy(&value, &bytes[offset], sizeof(int));
+            fields.push_back(std::to_string(value));
+            offset += sizeof(int);
+        }
+        else if (column.type == DataType::VARCHAR) {
+            if (offset + sizeof(uint16_t) > bytes.size()) {
+                std::cout << "Error: Not enough bytes for VARCHAR length\n";
+                return {};
+            }
+            uint16_t length;
+            std::memcpy(&length, &bytes[offset], sizeof(uint16_t));
+            offset += sizeof(uint16_t);
+            if (offset + length > bytes.size()) {
+                std::cout << "Error: Not enough bytes for VARCHAR field\n";
+                return {};
+            }
+            fields.push_back(std::string(bytes.begin() + offset, bytes.begin() + offset + length));
+            offset += length;
+        }
+        else {
+            std::cout << "Unsupported data type in schema: " << column.name << std::endl;
+            return {};
+        }
+    }
+    return fields;
+}
+
 int main() {
     FileStorageLayer storage;
 
@@ -110,14 +184,29 @@ int main() {
                 continue;
             }
             try {
-                int record_id = storage.insert(args[1], string_to_bytes(args[2]));
+				std::string table_name = args[1];
+				std::vector<std::string> fields = split_vector_by_delimeter(args[2], ','); // Split by ',' to get individual fields
+
+				TableSchema schema = storage.get_table_schema(table_name);
+
+                if (schema.columns.empty()) {
+                    std::cout << "Error: Table '" << table_name << "' does not exist or has no schema defined" << std::endl;
+                    continue;
+                }
+				std::vector<uint8_t> record_bytes = schema_to_bytes(schema, fields);
+
+                if (record_bytes.empty()) {
+                    std::cout << "Error: Failed to convert record to bytes. Check schema and field types." << std::endl;
+                    continue;
+                }
+
+                int record_id = storage.insert(table_name, record_bytes);
 
                 if (record_id < 0) {
-                    std::cout << "Error: Failed to insert record. Table may not exist.\n";
-                    continue;
-				}
-
-                std::cout << "Record inserted with ID " << record_id << std::endl;
+					std::cout << "Error: Failed to insert record. Table may not exist or schema mismatch." << std::endl;
+					continue;
+                }
+				std::cout << "Record inserted with ID: " << record_id << std::endl;
             }
             catch (const std::exception& e) {
                 std::cout << "Error: " << e.what() << std::endl;
@@ -129,15 +218,30 @@ int main() {
                 continue;
             }
             try {
+				std::string table_name = args[1];
                 int record_id = std::stoi(args[2]);
-                auto record = storage.get(args[1], record_id);
-
+                auto record = storage.get(table_name, record_id);
                 if (record.empty()) {
-                    std::cout << "Error: Record not found\n";
+                    std::cout << "Error: Record with ID " << record_id << " not found in table '" << table_name << "'\n";
+                    continue;
+                }
+
+				TableSchema schema = storage.get_table_schema(table_name);
+                if (schema.columns.empty()) {
+                    std::cout << "Error: Table '" << table_name << "' does not exist or has no schema defined" << std::endl;
                     continue;
 				}
 
-                std::cout << "Retrieved record: " << bytes_to_string(record) << std::endl;
+                std::vector<std::string> fields = bytes_to_fields(schema, record);
+                if (fields.empty()) {
+                    std::cout << "Error: Failed to convert record bytes to fields. Check schema and field types." << std::endl;
+                    continue;
+                }
+                std::cout << "Record[" << record_id << "]: ";
+                for (const auto& field : fields) {
+                    std::cout << field << " ";
+                }
+				std::cout << std::endl;
             }
             catch (const std::exception& e) {
                 std::cout << "Error: " << e.what() << std::endl;
@@ -149,15 +253,28 @@ int main() {
                 continue;
             }
             try {
-                int record_id = std::stoi(args[2]);
-                bool isSuccess = storage.update(args[1], record_id, string_to_bytes(args[3]));
+				std::string table_name = args[1];
+				int record_id = std::stoi(args[2]);
 
-                if (!isSuccess) {
-                    std::cout << "Error: Failed to update record. Record may not exist.\n";
-					continue;
+				std::vector<std::string> fields = split_vector_by_delimeter(args[3], ',');
+
+                TableSchema schema = storage.get_table_schema(table_name);
+                if (schema.columns.empty()) {
+                    std::cout << "Error: Table '" << table_name << "' does not exist or has no schema defined" << std::endl;
+                    continue;
 				}
 
-                std::cout << "Record updated\n";
+                std::vector<uint8_t> record_bytes = schema_to_bytes(schema, fields);
+                if (record_bytes.empty()) {
+                    std::cout << "Error: Failed to convert record to bytes. Check schema and field types." << std::endl;
+                    continue;
+                }
+                bool isUpdated = storage.update(table_name, record_id, record_bytes);
+				if (!isUpdated) {
+					std::cout << "Error: Failed to update record. Record may not exist or schema mismatch." << std::endl;
+					continue;
+                }
+				std::cout << "Record updated\n";
             }
             catch (const std::exception& e) {
                 std::cout << "Error: " << e.what() << std::endl;
@@ -169,15 +286,14 @@ int main() {
                 continue;
             }
             try {
+				std::string table_name = args[1];
                 int record_id = std::stoi(args[2]);
-                bool isSucces = storage.delete_record(args[1], record_id);
-
-                if (!isSucces) {
-					std::cout << "Error: Failed to delete record. Record may not exist.\n";
+                bool isDeleted = storage.delete_record(table_name, record_id);
+                if (!isDeleted) {
+					std::cout << "Error: Record with ID " << record_id << " not found in table '" << table_name << "'\n";
 					continue;
-				}
-
-                std::cout << "Record deleted\n";
+                }
+				std::cout << "Record with ID " << record_id << " deleted from table '" << table_name << "'\n";
             }
             catch (const std::exception& e) {
                 std::cout << "Error: " << e.what() << std::endl;
