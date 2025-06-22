@@ -580,3 +580,11 @@ void FileStorageLayer::load_table_schemas() {
         }
 	}
 }
+
+TableSchema FileStorageLayer::get_table_schema(const std::string& table_name) const {
+    auto it = table_schemas.find(table_name);
+    if (it != table_schemas.end()) {
+        return it->second;
+    }
+    return TableSchema(); // Return an empty schema if not found
+}

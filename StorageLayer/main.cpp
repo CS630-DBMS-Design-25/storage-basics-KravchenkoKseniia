@@ -331,7 +331,23 @@ int main() {
 
                 std::cout << "Tables:\n";
                 for (const auto& table : tables) {
-                    std::cout << "  " << table << "\n";
+                    std::cout << "  " << table << "    < ";
+
+                    try {
+                        auto schema = storage.get_table_schema(table);
+                        for (const auto& column : schema.columns) {
+                            std::cout << column.name << ":";
+                            if (column.type == DataType::INT) {
+                                std::cout << "INT ";
+                            } else if (column.type == DataType::VARCHAR) {
+                                std::cout << "VARCHAR(" << column.length << ") ";
+                            }
+                        }
+                        std::cout << ">\n";
+                    }
+                    catch (const std::exception& e) {
+                        std::cout << "Error retrieving schema for table '" << table << "': " << e.what() << std::endl;
+                    }
                 }
             }
             catch (const std::exception& e) {

@@ -38,13 +38,16 @@ public:
     bool create_table(const std::string& table_name, const TableSchema& schema);
     bool drop_table(const std::string& table_name);
     std::vector<std::string> list_tables();
-	bool vacuum(const std::string& table_name);
+
+    TableSchema get_table_schema(const std::string& table_name) const;
 private:
     bool is_open;
 	bool is_vacuum;
     std::string storage_path;
 
 	std::unordered_map<std::string, TableSchema> table_schemas;
+
+    bool vacuum(const std::string& table_name);
 
 	void ensure_directory_exists(const std::string& path);
 	bool is_table_exists(const std::string& table_name) const;
