@@ -313,30 +313,44 @@ int main() {
             if (args.size() > 2 && args[2] == "--projection") {
                 is_projection_provided = true;
                 
-                for (size_t i = 3; i < args.size(); ++i) {
+				std::vector<std::string> projection_fields = split_vector_by_delimeter(args[3], ','); // Split by ',' to get individual fields
+                
+                for (const auto& field : projection_fields) {
                     try {
-                        projection.push_back(std::stoi(args[i]));
-                    }
-                    catch (const std::exception& e) {
-                        std::cout << "Error: Invalid projection index '" << args[i] << "'. Must be an integer.\n";
-                        continue;
+                        int index = std::stoi(field);
+                        projection.push_back(index);
+                    } catch (const std::exception& e) {
+                        std::cout << "Error: Invalid projection index '" << field << "'. Must be an integer.\n";
+                        is_projection_provided = false;
+                        break;
                     }
 				}
 			}
 
             auto callback = [&](int rid, const std::vector<uint8_t>& record) {
-				std::vector<uint8_t> output_record;
+				TableSchema schema = storage.get_table_schema(table);
+                
+                if (schema.columns.empty()) {
+                    std::cout << "Error: Table '" << table << "' does not exist or has no schema defined" << std::endl;
+                    return false;
+				}
+
+				std::vector<std::string> fields = bytes_to_fields(schema, record);
+
                 if (is_projection_provided) {
                     for (int index : projection) {
-                        if (index < 0 || index >= record.size()) {
+                        if (index < 0 || index >= fields.size()) {
                             std::cout << "Error: Projection index " << index << " out of bounds for record size " << record.size() << std::endl;
                         }
-                        output_record.push_back(record[index]);
+
+						std::cout << "Field[" << index << "]: " << fields[index] << " ";
                     }
                 } else {
-                    output_record = record; // No projection
+                    for (size_t i = 0; i < fields.size(); i++) {
+                        std::cout << "Field[" << i << "]: " << fields[i] << " ";
+					}
                 }
-				std::cout << "Record[" << rid << "]: " << bytes_to_string(output_record) << std::endl;
+				std::cout << "\n";
 				return true;
 			};
 
