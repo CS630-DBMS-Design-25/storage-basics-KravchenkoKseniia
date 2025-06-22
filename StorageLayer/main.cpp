@@ -18,7 +18,6 @@ void print_help() {
         << "  update <table name> <record_id> <record> - Update a record\n"
         << "  delete <table name> <record_id>          - Delete a record\n"
         << "  scan <table name> [--projection <field1> <field2> ...] - Scan records in a table (not implemented yet)\n"
-        //<< "  flush                                    - Flush data to disk (not implemented yet)\n"
         << "  help                                     - Display this help message\n"
         << "  exit/quit                                - Exit the program\n";
 }
@@ -176,22 +175,37 @@ int main() {
                 continue;
             }
 
+			std::optional<std::vector<int>> projection;
+			std::string table = args[1];
+            
+            if (args.size() > 2 && args[2] == "--projection") {
+				std::vector<int> indices;
+                
+                for (size_t i = 3; i < args.size(); ++i) {
+                    try {
+                        indices.push_back(std::stoi(args[i]));
+                    }
+                    catch (const std::exception& e) {
+                        std::cout << "Error: Invalid projection index '" << args[i] << "'. Must be an integer.\n";
+                        continue;
+                    }
+				}
+
+				projection = indices;
+			}
+
+            auto callback = [&](int rid, const std::vector<uint8_t>& record) {
+                std::cout << "Record[" << rid << "]:"  << bytes_to_string(record) << std::endl;
+                return true;
+			};
+
             try {
-				std::cout << "Will be implemented in future versions.\n";
+				storage.scan(table, callback, projection, std::nullopt);
             }
             catch (const std::exception& e) {
                 std::cout << "Error: " << e.what() << std::endl;
             }
         }
-        //else if (command == "flush") {
-        //    try {
-        //        storage.flush();
-        //        std::cout << "Storage flushed\n";
-        //    }
-        //    catch (const std::exception& e) {
-        //        std::cout << "Error: " << e.what() << std::endl;
-        //    }
-        //}
         else if (command == "create") {
             if (args.size() < 2) {
                 std::cout << "Error: Missing table name argument. Usage: create <table name>\n";

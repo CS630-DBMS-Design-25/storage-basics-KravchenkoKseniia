@@ -16,22 +16,6 @@ struct PageHeader {
 	uint16_t free_space_offset; // Offset to the next free space in the page
 };
 
-//enum class DataType {
-//    INT,
-//    VARCHAR,
-//	UNKNOWN
-//};
-//
-//struct Column {
-//    std::string name;
-//    DataType type;
-//    size_t size; // Size for VARCHAR, ignored for INT
-//};
-//
-//struct TableSchema {
-//    std::string name;
-//    std::vector<Column> columns;
-//};
 
 class FileStorageLayer : public StorageLayer {
 public:
@@ -50,21 +34,18 @@ public:
         const std::optional<std::vector<int>>& projection = std::nullopt,
         const std::optional<std::function<bool(const std::vector<uint8_t>&)>>& filter_func = std::nullopt) override;
 
-    bool create_table(const std::string& table_name/*, const std::vector<Column>& table_schema*/);
+    bool create_table(const std::string& table_name);
     bool drop_table(const std::string& table_name);
     std::vector<std::string> list_tables();
-	bool vacuum(const std::string& table_name); // willbe implemented later
+	bool vacuum(const std::string& table_name);
 private:
+    bool is_open;
+	bool is_vacuum;
+    std::string storage_path;
+
 	void ensure_directory_exists(const std::string& path);
 	bool is_table_exists(const std::string& table_name) const;
 	int make_record_id(uint16_t page, uint16_t slot) const;
 	void split_record_id(int record_id, uint16_t& page, uint16_t& slot);
-    bool is_open;
-    std::string storage_path;
-
-	//std::unordered_map<std::string, TableSchema> table_schemas;
-	//bool save_table_schema(const std::string& table_name);
-	//bool load_table_schema(const std::string& table_name);
-    //std::vector<uint8_t> encode_record(const std::string& table, const std::vector<std::string>& values);
 };
 
