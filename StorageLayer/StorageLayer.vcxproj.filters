@@ -29,5 +29,8 @@
     <ClInclude Include="file_storage_layer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="table_schema.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -130,6 +130,7 @@
   <ItemGroup>
     <ClInclude Include="file_storage_layer.h" />
     <ClInclude Include="storage_layer.h" />
+    <ClInclude Include="table_schema.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -16,6 +16,7 @@ FileStorageLayer::~FileStorageLayer() {
 void FileStorageLayer::open(const std::string& path) {
     storage_path = path;
 	ensure_directory_exists(path);
+	load_table_schemas(); // Load existing table schemas if any
     is_open = true;
 }
 
@@ -410,15 +411,16 @@ std::vector<std::vector<uint8_t>> FileStorageLayer::scan(
     return results;
 }
 
-bool FileStorageLayer::create_table(const std::string& table_name) {
+bool FileStorageLayer::create_table(const std::string& table_name, const TableSchema& schema) {
     if (!is_open) {
-		std::cout << "Storage is not open. Cannot create table." << std::endl;
-		return false;
+        std::cout << "Storage is not open. Cannot create table." << std::endl;
+        return false;
     }
 
     auto tableFile = std::filesystem::path(storage_path) / (table_name + ".db");
-    
-    if (std::filesystem::exists(tableFile)) {
+    auto schemaFile = std::filesystem::path(storage_path) / (table_name + ".schema");
+
+    if (std::filesystem::exists(tableFile) || std::filesystem::exists(schemaFile)) {
         std::cout << "Table with such name is already exists!" << std::endl;
         return false;
     }
@@ -432,7 +434,23 @@ bool FileStorageLayer::create_table(const std::string& table_name) {
         std::cout << "Failed to create table file." << std::endl;
         return false;
     }
-   
+
+	std::ofstream schema_page(schemaFile);
+
+    if (!schema_page.is_open()) {
+        std::cout << "Failed to create schema file." << std::endl;
+        return false;
+    }
+
+    schema_page << schema.columns.size() << std::endl; // Write the number of columns
+
+    for (const auto& column : schema.columns) {
+        schema_page << column.name << " " 
+                    << static_cast<int>(column.type) << " " 
+                    << column.length << std::endl; // Write column name, type, and length
+    }
+
+	table_schemas[table_name] = schema; // Store the schema for the table
 	return true;
 }
 
@@ -442,13 +460,16 @@ bool FileStorageLayer::drop_table(const std::string& table_name) {
         return false;
     }
     auto tableFile = std::filesystem::path(storage_path) / (table_name + ".db");
+	auto schemaFile = std::filesystem::path(storage_path) / (table_name + ".schema");
     
     if (!std::filesystem::exists(tableFile)) {
         std::cout << "Table with such name does not exist!" << std::endl;
         return false;
     }
-    std::filesystem::remove(tableFile);
 
+    std::filesystem::remove(tableFile);
+	std::filesystem::remove(schemaFile); // Remove the schema file as well
+	table_schemas.erase(table_name); // Remove the schema from the in-memory map
 	return true;
 }
 
@@ -530,4 +551,40 @@ int FileStorageLayer::make_record_id(uint16_t page, uint16_t slot) const {
 void FileStorageLayer::split_record_id(int record_id, uint16_t& page, uint16_t& slot) {
     page = (record_id >> 16) & 0xFFFF;
     slot = record_id & 0xFFFF;
+}
+
+void FileStorageLayer::load_table_schemas() {
+    for (auto& entry : std::filesystem::directory_iterator(storage_path)) {
+        if (entry.path().extension() == ".schema") {
+			std::ifstream schema_file(entry.path());
+			std::string table_name = entry.path().stem().string();
+
+            size_t cnt;
+			schema_file >> cnt; // Read the number of columns
+
+			TableSchema schema;
+            
+            for (size_t i = 0; i < cnt; i++) {
+				Column column;
+
+                int type;
+                schema_file >> column.name;
+				schema_file >> type; // Read column type
+				schema_file >> column.length; // Read column length
+
+                column.type = static_cast<DataType>(type);
+				schema.columns.push_back(column);
+            }
+
+			table_schemas[table_name] = schema; // Store the schema for the table
+        }
+	}
+}
+
+TableSchema FileStorageLayer::get_table_schema(const std::string& table_name) const {
+    auto it = table_schemas.find(table_name);
+    if (it != table_schemas.end()) {
+        return it->second;
+    }
+    return TableSchema(); // Return an empty schema if not found
 }
