@@ -1,6 +1,5 @@
 #include "file_storage_layer.h"
 
-
 // MAIN CLASS IMPLEMENTATION
 
 FileStorageLayer::FileStorageLayer()
