@@ -19,6 +19,7 @@ void print_help() {
         << "  update <table name> <record_id> <record> - Update a record\n"
         << "  delete <table name> <record_id>          - Delete a record\n"
         << "  scan <table name> [--projection <field1> <field2> ...] - Scan records in a table\n"
+        << "  find <table name> <key>                  - find records by index\n"
         << "  help                                     - Display this help message\n"
         << "  exit/quit                                - Exit the program\n";
 }
@@ -473,6 +474,21 @@ int main() {
                 std::cout << "Error: " << e.what() << std::endl;
             }
 		}
+        else if (command == "find") {
+
+            if (args.size() < 3) {
+                std::cout << "Error: Missing arguments. Usage: find <table name> <key>\n";
+                continue;
+			}
+
+            std::string table = args[1];
+            std::string key = args[2];
+            auto ids = storage.find(table, key);
+
+            for (int id : ids) {
+                std::cout << "Found ID = " << id << std::endl;
+            }
+        }
         else {
             std::cout << "Unknown command: " << command << "\nType 'help' for available commands\n";
         }

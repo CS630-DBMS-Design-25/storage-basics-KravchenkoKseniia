@@ -1,6 +1,5 @@
 #include "file_storage_layer.h"
 
-
 // MAIN CLASS IMPLEMENTATION
 
 FileStorageLayer::FileStorageLayer()
@@ -17,10 +16,22 @@ void FileStorageLayer::open(const std::string& path) {
     storage_path = path;
 	ensure_directory_exists(path);
 	load_table_schemas(); // Load existing table schemas if any
+
+    for (auto& index : table_schemas) {
+		auto& buckets = index_buckets[index.first];
+		buckets.assign(INDEX_BUCKET_SIZE, std::vector<int>()); // Initialize index buckets for each table
+		load_index_buckets(index.first); // Load index buckets from file
+	}
+
     is_open = true;
 }
 
 void FileStorageLayer::close() {
+
+    for (auto& index : table_schemas) {
+        save_index_buckets(index.first); // Save index buckets before closing
+	}
+
     is_open = false;
 }
 
@@ -106,6 +117,26 @@ int FileStorageLayer::insert(const std::string& table, const std::vector<uint8_t
         vacuum(table);
     }
 
+	auto& buckets = index_buckets[table];
+
+    if (buckets.empty()) {
+		buckets.assign(INDEX_BUCKET_SIZE, std::vector<int>()); // Initialize index buckets if empty
+    }
+
+	TableSchema schema = get_table_schema(table);
+	Column column = schema.columns[0]; // Assuming the first column is indexed for simplicity
+
+	size_t offset = 0;
+	std::string key = get_key(table, record); // Get the key for indexing
+
+    size_t hash_value = std::hash<std::string>{}(key);
+    size_t bucket = hash_value % INDEX_BUCKET_SIZE;
+
+    if (std::find(index_buckets[table][bucket].begin(), index_buckets[table][bucket].end(), recordId) == index_buckets[table][bucket].end()) {
+        index_buckets[table][bucket].push_back(recordId); // Add record ID to the index bucket
+    }
+	save_index_buckets(table); // Save the index buckets to file
+
 	return recordId; // Return the record ID
 }
 
@@ -190,6 +221,17 @@ bool FileStorageLayer::update(const std::string& table, int record_id, const std
 
 	auto tableFile = std::filesystem::path(storage_path) / (table + ".db");
 
+	// Get old record for comparison
+
+	std::vector<uint8_t> old_record = get(table, record_id);
+	std::string oldKey = get_key(table, old_record);
+
+    if (oldKey == std::string()) {
+        std::cout << "Error: Get Key function gave an error" << std::endl;
+        return false;
+    }
+
+
     {
         std::fstream page(tableFile, std::ios::binary | std::ios::in | std::ios::out);
 
@@ -270,6 +312,25 @@ bool FileStorageLayer::update(const std::string& table, int record_id, const std
         vacuum(table);
 	}
 
+	std::string newKey = get_key(table, updated_record);
+
+    if (oldKey != newKey) {
+        size_t old_hash = std::hash<std::string>{}(oldKey);
+        size_t bucket = old_hash % INDEX_BUCKET_SIZE;
+        auto& old_index = index_buckets[table][bucket];
+        
+		old_index.erase(std::remove(old_index.begin(), old_index.end(), record_id), old_index.end());
+
+        size_t new_hash = std::hash<std::string>{}(newKey);
+        size_t new_bucket = new_hash % INDEX_BUCKET_SIZE;
+		auto& new_index = index_buckets[table][new_bucket];
+        if (std::find(new_index.begin(), new_index.end(), record_id) == new_index.end()) {
+            // Only add if not already present
+            new_index.push_back(record_id);
+		}
+		save_index_buckets(table); // Save the index buckets to file
+	}
+
     return true;
 }
 
@@ -320,6 +381,16 @@ bool FileStorageLayer::delete_record(const std::string& table, int record_id) {
     if (!is_vacuum) {
         vacuum(table);
     }
+
+	// Remove the record ID from the index buckets
+    for (auto& index : index_buckets[table]) {
+        auto it = std::find(index.begin(), index.end(), record_id);
+        if (it != index.end()) {
+            index.erase(it);
+            save_index_buckets(table); 
+            break;
+        }
+	}
 
     return true;
 }
@@ -461,6 +532,7 @@ bool FileStorageLayer::drop_table(const std::string& table_name) {
     }
     auto tableFile = std::filesystem::path(storage_path) / (table_name + ".db");
 	auto schemaFile = std::filesystem::path(storage_path) / (table_name + ".schema");
+	auto indexFile = std::filesystem::path(storage_path) / (table_name + ".index");
     
     if (!std::filesystem::exists(tableFile)) {
         std::cout << "Table with such name does not exist!" << std::endl;
@@ -469,7 +541,12 @@ bool FileStorageLayer::drop_table(const std::string& table_name) {
 
     std::filesystem::remove(tableFile);
 	std::filesystem::remove(schemaFile); // Remove the schema file as well
+	std::filesystem::remove(indexFile); // Remove the index file if it exists
+
 	table_schemas.erase(table_name); // Remove the schema from the in-memory map
+    index_buckets.erase(table_name); // Remove the index buckets for the table
+
+	std::cout << "Table " << table_name << " dropped successfully." << std::endl;
 	return true;
 }
 
@@ -531,6 +608,20 @@ bool FileStorageLayer::vacuum(const std::string& table_name) {
 	return true;
 }
 
+std::vector<int> FileStorageLayer::find(const std::string& table_name, const std::string& key) {
+    if (!is_open) {
+        std::cout << "Storage is not open. Cannot find records." << std::endl;
+        return {};
+    }
+    if (!is_table_exists(table_name)) {
+        std::cout << "Table does not exist." << std::endl;
+        return {};
+    }
+    size_t hash_value = std::hash<std::string>{}(key);
+    size_t bucket = hash_value % INDEX_BUCKET_SIZE;
+	return index_buckets[table_name][bucket];
+}
+
 // PRIVATE METHODS
 
 void FileStorageLayer::ensure_directory_exists(const std::string& path) {
@@ -587,4 +678,83 @@ TableSchema FileStorageLayer::get_table_schema(const std::string& table_name) co
         return it->second;
     }
     return TableSchema(); // Return an empty schema if not found
+}
+
+void FileStorageLayer::load_index_buckets(const std::string& table_name)
+{
+    std::ifstream index_page(storage_path + "/" + table_name + ".index");
+    auto& buckets = index_buckets[table_name];
+    buckets.assign(INDEX_BUCKET_SIZE, {});
+
+    std::string line;
+    size_t bucket_cout = 0;
+
+    while (std::getline(index_page, line) && bucket_cout < INDEX_BUCKET_SIZE) {
+        std::stringstream ss(line);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+
+            if (std::find(buckets[bucket_cout].begin(), buckets[bucket_cout].end(), std::stoi(token)) == buckets[bucket_cout].end()) {
+                buckets[bucket_cout].push_back(std::stoi(token));
+			}
+        }
+
+        bucket_cout++;
+    }
+}
+
+void FileStorageLayer::save_index_buckets(const std::string& table_name)
+{
+    std::ofstream index_page(storage_path + "/" + table_name + ".index", std::ios::trunc);
+    auto& buckets = index_buckets[table_name];
+
+    for (auto& bucket : buckets) {
+        for (size_t i = 0; i < bucket.size(); i++) {
+            if (i) {
+                index_page << ',';
+            }
+            index_page << bucket[i];
+        }
+        index_page << "\n";
+    }
+
+}
+
+std::string FileStorageLayer::get_key(const std::string& table_name, const std::vector<uint8_t>& record)
+{
+    TableSchema schema = get_table_schema(table_name);
+
+    const Column& c = schema.columns[0];
+
+    size_t offset = 0;
+
+    if (c.type == DataType::INT) {
+        if (record.size() < sizeof(int)) {
+            std::cout << "Record size is smaller than int size" << std::endl;
+            return std::string();
+        }
+
+        int value;
+        std::memcpy(&value, record.data() + offset, sizeof(int)); // Extract INT value from record
+        return std::to_string(value); // Convert INT to string for indexing
+    }
+    else if (c.type == DataType::VARCHAR) {
+        if (record.size() < offset + sizeof(uint16_t)) {
+            std::cout << "Record size is too small for VARCHAR type." << std::endl;
+            return std::string();
+        }
+
+        uint16_t str_length;
+        std::memcpy(&str_length, record.data() + offset, sizeof(uint16_t)); // Extract string length
+        offset += sizeof(uint16_t); // Move offset to the start of the string data
+        if (record.size() < offset + str_length) {
+            std::cout << "Record size is too small for VARCHAR type." << std::endl;
+            return std::string();
+        }
+        return std::string(reinterpret_cast<const char*>(record.data() + offset), str_length); // Extract string value
+    }
+    else {
+        std::cout << "Unsupported data type for indexing." << std::endl;
+        return std::string(); // Unsupported data type for indexing
+    }
 }
