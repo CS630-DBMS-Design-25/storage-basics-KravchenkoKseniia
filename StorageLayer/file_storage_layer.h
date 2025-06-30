@@ -60,7 +60,7 @@ private:
 	void split_record_id(int record_id, uint16_t& page, uint16_t& slot);
 
 	void load_table_schemas();
-
+     
 	void load_index_buckets(const std::string& table_name);
     void save_index_buckets(const std::string& table_name);
     std::string get_key(const std::string& table_name, const std::vector<uint8_t>& record);
