@@ -6,6 +6,7 @@
 #include <algorithm>
 #include "file_storage_layer.h"
 #include "table_schema.h"
+#include <pg_query.h>
 
 void print_help() {
     std::cout << "Storage Layer CLI - Available commands:\n"
