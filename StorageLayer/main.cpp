@@ -6,7 +6,8 @@
 #include <algorithm>
 #include "file_storage_layer.h"
 #include "table_schema.h"
-#include <pg_query.h>
+#include "parser.h"
+#include "ast.h"
 
 void print_help() {
     std::cout << "Storage Layer CLI - Available commands:\n"
@@ -22,6 +23,7 @@ void print_help() {
         << "  scan <table name> [--projection <field1> <field2> ...] - Scan records in a table\n"
         << "  find <table name> <key>                  - find records by index\n"
         << "  help                                     - Display this help message\n"
+        << "  --query <SQL query>                      - Execute SQL using parser\n"
         << "  exit/quit                                - Exit the program\n";
 }
 // Parse command line arguments
@@ -123,6 +125,9 @@ static std::vector<std::string> bytes_to_fields(const TableSchema& schema, const
     }
     return fields;
 }
+
+template<class... Ts> struct overloaded : Ts... {using Ts::operator()...; };
+template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 int main() {
     FileStorageLayer storage;
@@ -488,6 +493,134 @@ int main() {
 
             for (int id : ids) {
                 std::cout << "Found ID = " << id << std::endl;
+            }
+        }
+        else if (command == "--query") {
+            if (args.size() < 2) {
+                std::cout << "Error: missing SQL query" << std::endl;
+                continue;
+            }
+
+            size_t query_pos = input.find("--query");
+
+            if (query_pos == std::string::npos) {
+                std::cout << "Error: missing <--query>" << std::endl;
+                continue;
+            }
+
+            size_t pos = query_pos + std::strlen("--query");
+            pos = input.find_first_not_of(" ", pos);
+
+            if (pos == std::string::npos) {
+                std::cout << "Error: missing sql query" << std::endl;
+                continue;
+            }
+
+            bool quoted = input[pos] == '"';
+            
+            if (quoted) {
+                pos++;
+            }
+
+            size_t end = input.size();
+
+            while (end > pos && std::isspace(input[end - 1])) {
+                end--;
+            }
+
+            if (quoted && end > pos && input[end - 1] == '"') {
+                end--;
+            }
+
+            std::string sql = input.substr(pos, end - pos);
+
+            if (sql.empty()) {
+                std::cout << "Error: SQL query is empty" << std::endl;
+                continue;  
+            }
+
+            try {
+                AST stmt = parse_sql_to_ast(sql);
+
+                std::visit(overloaded{
+                    [&](const CreateTableStatement& create) {
+                        TableSchema schema;
+
+                        for (auto& [name, type] : create.columns) {
+                            Column column;
+                            column.name = name;
+                            if (type == "INT") {
+                                column.type = DataType::INT;
+                                column.length = sizeof(int);
+                            }
+                            else if (type.rfind("VARCHAR(", 0) == 0) {
+                                std::string length = type.substr(8, type.size() - 9);
+                                column.type = DataType::VARCHAR;
+                                column.length = std::stoi(length);
+                            }
+                            else {
+                                std::cout << "Unsupported column type" << std::endl;
+                                return;
+                            }
+
+                            schema.columns.push_back(column);
+                        }
+
+                        if (storage.create_table(create.table_name, schema)) {
+                            std::cout << "Table " << create.table_name << " created" << std::endl;
+                        }
+                        else {
+                            std::cout << "Could not create the table " << create.table_name << std::endl;
+                        }
+                    },
+                    [&](const InsertStatement& insert) {
+                        TableSchema schema = storage.get_table_schema(insert.table_name);
+                        if (schema.columns.empty()) {
+                            std::cout << "Error: table " << insert.table_name << " not found" << std::endl;
+                            return;
+                        }
+
+                        std::vector<uint8_t> record_bytes = schema_to_bytes(schema, insert.values);
+
+                        if (record_bytes.empty()) {
+                            std::cout << "Error: failed to serialize the record" << std::endl;
+                            return;
+                        }
+
+                        int new_record_id = storage.insert(insert.table_name, record_bytes);
+
+                        if (new_record_id >= 0) {
+                            std::cout << "Inserted record into " << insert.table_name << " with ID " << new_record_id << std::endl;
+                        }
+                        else {
+                            std::cout << "Error while inserting value into " << insert.table_name << std::endl;
+                        }
+
+                    },
+                    [&](const SelectStatement& select) {
+                        TableSchema schema = storage.get_table_schema(select.table_name);
+                        if (schema.columns.empty()) {
+                            std::cout << "Error: table " << select.table_name << " not found" << std::endl;
+                            return;
+                        }
+
+                        auto callback = [&](int rid, const std::vector<uint8_t>& raw) {
+                            auto fields = bytes_to_fields(schema, raw);
+                            std::cout << "Record[" << rid << "]: ";
+                            for (auto& field : fields) {
+                                std::cout << field << " ";
+                            }
+
+                            std::cout << '\n';
+                            return true;
+                        };
+
+                        storage.scan(select.table_name, callback, std::nullopt, std::nullopt);
+                    }
+                }, stmt);
+            }
+            catch (const std::exception& e) {
+                std::cout << "SQL parse error: " << e.what() << std::endl;
             }
         }
         else {
