@@ -17,18 +17,11 @@ AST parse_sql_to_ast(const std::string& sql) {
 	std::string json_string = res.parse_tree;
 	pg_query_free_parse_result(res);
 
-	// --- DEBUG: виведемо сирий рядок і розібраний JSON ---
-	std::cout << "=== DEBUG: raw parse_tree ===\n" << json_string << "\n";
 	auto root = nlohmann::json::parse(json_string);
-	std::cout << "=== DEBUG: parsed JSON ===\n" << root.dump(2) << "\n";
 
-	std::cout << "=== DEBUG: top-level keys: ";
-	for (auto it = root.begin(); it != root.end(); ++it) {
-		std::cout << "'" << it.key() << "' ";
+	if (!root.contains("stmts") || !root["stmts"].is_array() || root.at("stmts").empty()) {
+		throw std::runtime_error("Invalid JSON structure: 'stmts' is missing/empty/not an array");
 	}
-	std::cout << "\n============================\n";
-
-	//auto root = nlohmann::json::parse(json_string);
 
 	nlohmann::json stmt_json = root.at("stmts").at(0).at("stmt");
 
