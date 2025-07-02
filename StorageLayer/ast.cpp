@@ -60,13 +60,39 @@ InsertStatement parse_insert_json(const nlohmann::json& json) {
 
 SelectStatement parse_select_json(const nlohmann::json& json) {
 	SelectStatement stmt;
-	auto& selected = json.at("selectStmt").at("SelectStmt");
+	bool isStar = false;
 
-	for (auto& table : selected["targetList"]) {
-		stmt.columns.push_back(table["ResTarget"]["val"]["ColumnRef"]["fields"][1]);
+	auto& targets = json.at("targetList");
+
+	for (auto& element : targets) {
+		auto& resTarget = element.at("ResTarget").at("val");
+
+		if (resTarget.contains("ColumnRef")) {
+			auto& ref = resTarget.at("ColumnRef");
+			auto& fields = ref.at("fields");
+
+			for (auto& field : fields) {
+				if (field.contains("A_Star")) {
+					isStar = true;
+					break;
+				}
+				else if (field.contains("String")) {
+					stmt.columns.push_back(field.at("String").at("sval").get<std::string>());
+				}
+			}
+
+			if (isStar) {
+				break;
+			}
+		}
 	}
 
-	stmt.table_name = selected["fromClause"][0]["relname"];
+	if (isStar) {
+		stmt.columns.clear();
+	}
+
+	auto& fromClause = json.at("fromClause").at(0).at("RangeVar");
+	stmt.table_name = fromClause.at("relname").get<std::string>();
 
 	return stmt;
 }

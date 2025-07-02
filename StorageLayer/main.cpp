@@ -604,11 +604,35 @@ int main() {
                             return;
                         }
 
+                        std::vector<int> projection_indexes;
+
+                        if (!select.columns.empty()) {
+                            for (auto& column : select.columns) {
+                                auto it = std::find_if(schema.columns.begin(), schema.columns.end(),
+                                    [&](auto& c) {return c.name == column; });
+
+                                if (it == schema.columns.end()) {
+                                    std::cout << "Error: no such columnin the table: " << column << std::endl;
+                                    return;
+                                }
+
+                                projection_indexes.push_back(std::distance(schema.columns.begin(), it));
+                            }
+                        }
+
                         auto callback = [&](int rid, const std::vector<uint8_t>& raw) {
                             auto fields = bytes_to_fields(schema, raw);
                             std::cout << "Record[" << rid << "]: ";
-                            for (auto& field : fields) {
-                                std::cout << field << " ";
+
+                            if (projection_indexes.empty()) {
+                                for (auto& field : fields) {
+                                    std::cout << field << " ";
+                                }
+                            }
+                            else {
+                                for (int index : projection_indexes) {
+                                    std::cout << fields[index] << " ";
+                                }
                             }
 
                             std::cout << '\n';
