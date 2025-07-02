@@ -3,16 +3,26 @@
 
 CreateTableStatement parse_create_table_json(const nlohmann::json& json) {
 	CreateTableStatement stmt;
-	stmt.table_name = json["relation"]["relname"];
+	stmt.table_name = json.at("relation").at("relname").get<std::string>();
 
-	for (auto& column : json["tableElts"]) {
-		auto& column_def = column["ColumnDef"];
-		std::string column_name = column_def["colname"];
+	for (auto& column : json.at("tableElts")) {
+		auto& column_def = column.at("ColumnDef");
+		std::string column_name = column_def.at("colname").get<std::string>();
 
-		auto names = column_def["typeName"]["names"];
-		std::string type_name = names.back();
+		auto typeName = column_def.at("typeName");
 
-		stmt.columns.push_back({ column_name, type_name });
+		std::string type = typeName.at("names").at(1).at("String").at("sval").get<std::string>();
+
+		if (type == "int4") {
+			stmt.columns.emplace_back(column_name, "INT");
+		}
+		else if (type == "varchar") {
+			int len = typeName.value("typmods", nlohmann::json::array()).at(0).at("A_Const").at("ival").at("ival").get<int>();
+			stmt.columns.emplace_back(column_name, "VARCHAR(" + std::to_string(len) + ")");
+		}
+		else {
+			stmt.columns.emplace_back(column_name, type);
+		}
 	}
 
 	return stmt;

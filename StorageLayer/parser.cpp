@@ -17,27 +17,20 @@ AST parse_sql_to_ast(const std::string& sql) {
 	std::string json_string = res.parse_tree;
 	pg_query_free_parse_result(res);
 
+	// --- DEBUG: виведемо сирий рядок і розібраний JSON ---
+	std::cout << "=== DEBUG: raw parse_tree ===\n" << json_string << "\n";
 	auto root = nlohmann::json::parse(json_string);
+	std::cout << "=== DEBUG: parsed JSON ===\n" << root.dump(2) << "\n";
 
-	nlohmann::json stmt_json;
+	std::cout << "=== DEBUG: top-level keys: ";
+	for (auto it = root.begin(); it != root.end(); ++it) {
+		std::cout << "'" << it.key() << "' ";
+	}
+	std::cout << "\n============================\n";
 
-	if (root.is_array()) {
-		stmt_json = root.at(0)["RawStmt"]["stmt"];
-	}
-	else if (root.contains("stmts")) {
-		auto arr = root["stmts"];
-		stmt_json = arr.at(0)["stmt"];
-	}
-	else if (root.contains("RawStmt")) {
-		stmt_json = root["RawStmt"]["stmt"];
-	}
-	else if (root.contains("parsetree")) {
-		auto arr = root["parsetree"];
-		stmt_json = arr.at(0)["RawStmt"]["stmt"];
-	}
-	else {
-		throw std::runtime_error("Unexpected format from pg_query");
-	}
+	//auto root = nlohmann::json::parse(json_string);
+
+	nlohmann::json stmt_json = root.at("stmts").at(0).at("stmt");
 
 	if (stmt_json.contains("CreateStmt")) {
 		return parse_create_table_json(stmt_json["CreateStmt"]);
