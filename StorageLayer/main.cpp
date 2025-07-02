@@ -612,7 +612,7 @@ int main() {
                                     [&](auto& c) {return c.name == column; });
 
                                 if (it == schema.columns.end()) {
-                                    std::cout << "Error: no such columnin the table: " << column << std::endl;
+                                    std::cout << "Error: no such column in the table: " << column << std::endl;
                                     return;
                                 }
 
