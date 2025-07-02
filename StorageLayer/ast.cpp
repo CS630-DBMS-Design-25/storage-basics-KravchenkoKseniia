@@ -30,16 +30,37 @@ CreateTableStatement parse_create_table_json(const nlohmann::json& json) {
 
 InsertStatement parse_insert_json(const nlohmann::json& json) {
 	InsertStatement stmt;
-	stmt.table_name = json["relation"]["relname"];
-	for (auto& value : json["selectStmt"]["SelectStmt"]["valueLists"][0]) {
-		stmt.values.push_back(value.dump());
+	stmt.table_name = json.at("relation").at("relname").get<std::string>();
+	
+	auto& valuesLists = json.at("selectStmt").at("SelectStmt").at("valuesLists");
+
+	if (!valuesLists.empty()) {
+		auto items = valuesLists.at(0).at("List").at("items");
+
+		for (auto& item : items) {
+			auto& aconst = item.at("A_Const");
+
+			if (aconst.contains("ival")) {
+				int value = aconst.at("ival").at("ival").get<int>();
+
+				stmt.values.push_back(std::to_string(value));
+			}
+			else if (aconst.contains("sval")) {
+				std::string value = aconst.at("sval").at("sval").get<std::string>();
+				stmt.values.push_back(value);
+			}
+			else {
+				stmt.values.push_back(aconst.dump());
+			}
+		}
 	}
+
 	return stmt;
 }
 
 SelectStatement parse_select_json(const nlohmann::json& json) {
 	SelectStatement stmt;
-	auto& selected = json["selectStmt"]["SelectStmt"];
+	auto& selected = json.at("selectStmt").at("SelectStmt");
 
 	for (auto& table : selected["targetList"]) {
 		stmt.columns.push_back(table["ResTarget"]["val"]["ColumnRef"]["fields"][1]);
