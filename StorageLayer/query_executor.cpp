@@ -54,6 +54,7 @@ std::vector<std::string> QueryExecutor::unpackRecord(const TableSchema& schema, 
 				throw std::runtime_error("Invalid record size for STRING column");
 			}
 			unpackedRecord.emplace_back((char*)values.data() + offset, strLength);
+			offset += strLength;
 		}
 	}
 	return unpackedRecord;
@@ -83,19 +84,6 @@ std::vector<std::vector<std::string>> QueryExecutor::executeSelect(const SelectS
 		throw std::runtime_error("Table schema not found for " + stmt.table_name);
 	}
 
-	std::optional<std::vector<int>> proj;
-	if (!stmt.columns.empty()) {
-		proj.emplace();
-		for (auto& col : stmt.columns) {
-			auto it = std::find_if(schema.columns.begin(), schema.columns.end(),
-				[&](auto& c) { return c.name == col; });
-			if (it != schema.columns.end()) {
-				proj->push_back(std::distance(schema.columns.begin(), it));
-			} else {
-				throw std::runtime_error("Column " + col + " not found in table " + stmt.table_name);
-			}
-		}
-	}
 
 	std::optional<std::function<bool(const std::vector<uint8_t>&)>> filter_func;
 	if (stmt.where_column) {
@@ -127,20 +115,35 @@ std::vector<std::vector<std::string>> QueryExecutor::executeSelect(const SelectS
 				return fv == *stmt.where_value;
 			}
 
+			if (*stmt.where_operator == "<=") {
+				return fv <= *stmt.where_value;
+			}
+
+			if (*stmt.where_operator == ">=") {
+				return fv >= *stmt.where_value;
+			}
+
+			if (*stmt.where_operator == "!=") {
+				return fv != *stmt.where_value;
+			}
+
 			return false;
 		};
 	}
 
-	auto raws = storage.scan(stmt.table_name, std::nullopt, proj, filter_func);
+	auto raws = storage.scan(stmt.table_name, std::nullopt, std::nullopt, filter_func);
 
 	std::vector<std::vector<std::string>> rows;
 	for (auto& r : raws) {
 		auto all = unpackRecord(schema, r);
-		if (proj) {
+		if (!stmt.columns.empty()) {
 			std::vector<std::string> pr;
-			for (int i : *proj) {
-				pr.push_back(all[i]);
+			for (auto& column : stmt.columns) {
+				auto it = std::find_if(schema.columns.begin(), schema.columns.end(), [&](auto& c) {return c.name == column; });
+				int index = std::distance(schema.columns.begin(), it);
+				pr.push_back(all[index]);
 			}
+
 			rows.push_back(std::move(pr));
 		}
 		else {
@@ -152,7 +155,7 @@ std::vector<std::vector<std::string>> QueryExecutor::executeSelect(const SelectS
 		}
 	}
 
-	if (stmt.order_by_column && !stmt.columns.empty()) {
+	if (stmt.order_by_column) {
 		int col_index = std::distance(stmt.columns.begin(),
 			std::find(stmt.columns.begin(), stmt.columns.end(), *stmt.order_by_column));
 
@@ -202,20 +205,39 @@ size_t QueryExecutor::executeDelete(const DeleteStatement& stmt)
 				return fv == *stmt.where_value;
 			}
 
+			if (*stmt.where_operator == "<=") {
+				return fv <= *stmt.where_value;
+			}
+
+			if (*stmt.where_operator == ">=") {
+				return fv >= *stmt.where_value;
+			}
+
+			if (*stmt.where_operator == "!=") {
+				return fv != *stmt.where_value;
+			}
+
 			return false;
 		};
 	}
 
-	auto raws = storage.scan(stmt.table_name, std::nullopt, std::nullopt, filter_func);
-	size_t deleted = 0;
+	std::vector<int> ids;
+	storage.scan(
+		stmt.table_name, 
+		[&](int record_id, const std::vector<uint8_t>& raw) {
+			ids.push_back(record_id);
+			return true;
+		}, 
+		std::nullopt,
+		filter_func
+	);
 
-	for (auto& r : raws) {
-		int primaty_key = std::stoi(unpackRecord(schema, r)[0]);
-		if (storage.delete_record(stmt.table_name, primaty_key)) {
+	size_t deleted = 0;
+	for (int id : ids) {
+		if (storage.delete_record(stmt.table_name, id)) {
 			deleted++;
 		}
 	}
-
 	return deleted;
 }
 
