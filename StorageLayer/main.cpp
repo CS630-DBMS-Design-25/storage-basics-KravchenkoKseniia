@@ -606,11 +606,11 @@ int main() {
                     },
                     [&](const DeleteStatement& stmt) {
                         auto count = q_ex.executeDelete(stmt);
-                        std::cout << "Deleted " << count << "rows" << std::endl;
+                        std::cout << "Deleted " << count << " rows" << std::endl;
                     },
                     [&](const CTASStatement& stmt) {
                         int count = q_ex.executeCreateTableAs(stmt);
-                        std::cout << "CTAS created " << stmt.table_name << "with " << count << "rows" << std::endl;
+                        std::cout << "CTAS created " << stmt.table_name << " with " << count << " rows" << std::endl;
                     }
                 }, stmt);
             }
