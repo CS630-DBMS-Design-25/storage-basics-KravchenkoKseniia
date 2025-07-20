@@ -8,6 +8,7 @@
 #include "table_schema.h"
 #include "parser.h"
 #include "ast.h"
+#include "query_executor.h"
 
 void print_help() {
     std::cout << "Storage Layer CLI - Available commands:\n"
@@ -541,6 +542,7 @@ int main() {
 
             try {
                 AST stmt = parse_sql_to_ast(sql);
+                QueryExecutor q_ex(storage);
 
                 std::visit(overloaded{
                     [&](const CreateTableStatement& create) {
@@ -574,72 +576,41 @@ int main() {
                         }
                     },
                     [&](const InsertStatement& insert) {
-                        TableSchema schema = storage.get_table_schema(insert.table_name);
-                        if (schema.columns.empty()) {
-                            std::cout << "Error: table " << insert.table_name << " not found" << std::endl;
-                            return;
-                        }
-
-                        std::vector<uint8_t> record_bytes = schema_to_bytes(schema, insert.values);
-
-                        if (record_bytes.empty()) {
-                            std::cout << "Error: failed to serialize the record" << std::endl;
-                            return;
-                        }
-
-                        int new_record_id = storage.insert(insert.table_name, record_bytes);
-
-                        if (new_record_id >= 0) {
-                            std::cout << "Inserted record into " << insert.table_name << " with ID " << new_record_id << std::endl;
-                        }
-                        else {
-                            std::cout << "Error while inserting value into " << insert.table_name << std::endl;
-                        }
-
+                        int id = q_ex.executeInsert(insert);
+                        std::cout << "Inserted ID = " << id << std::endl;
                     },
                     [&](const SelectStatement& select) {
-                        TableSchema schema = storage.get_table_schema(select.table_name);
-                        if (schema.columns.empty()) {
-                            std::cout << "Error: table " << select.table_name << " not found" << std::endl;
-                            return;
+                        auto rows = q_ex.executeSelect(select);
+
+                        if (select.columns.empty()) {
+                            auto schema = storage.get_table_schema(select.table_name);
+                            for (auto& col : schema.columns) {
+                                std::cout << col.name << "\t";
+                            }
                         }
-
-                        std::vector<int> projection_indexes;
-
-                        if (!select.columns.empty()) {
-                            for (auto& column : select.columns) {
-                                auto it = std::find_if(schema.columns.begin(), schema.columns.end(),
-                                    [&](auto& c) {return c.name == column; });
-
-                                if (it == schema.columns.end()) {
-                                    std::cout << "Error: no such column in the table: " << column << std::endl;
-                                    return;
-                                }
-
-                                projection_indexes.push_back(std::distance(schema.columns.begin(), it));
+                        else {
+                            for (auto& col : select.columns) {
+                                std::cout << col << "\t";
                             }
                         }
 
-                        auto callback = [&](int rid, const std::vector<uint8_t>& raw) {
-                            auto fields = bytes_to_fields(schema, raw);
-                            std::cout << "Record[" << rid << "]: ";
+                        std::cout << "\n";
 
-                            if (projection_indexes.empty()) {
-                                for (auto& field : fields) {
-                                    std::cout << field << " ";
-                                }
-                            }
-                            else {
-                                for (int index : projection_indexes) {
-                                    std::cout << fields[index] << " ";
-                                }
+                        for (auto& r : rows) {
+                            for (auto& value : r) {
+                                std::cout << value << "\t";
                             }
 
-                            std::cout << '\n';
-                            return true;
-                        };
-
-                        storage.scan(select.table_name, callback, std::nullopt, std::nullopt);
+                            std::cout << "\n";
+                        }
+                    },
+                    [&](const DeleteStatement& stmt) {
+                        auto count = q_ex.executeDelete(stmt);
+                        std::cout << "Deleted " << count << " rows" << std::endl;
+                    },
+                    [&](const CTASStatement& stmt) {
+                        int count = q_ex.executeCreateTableAs(stmt);
+                        std::cout << "CTAS created " << stmt.table_name << " with " << count << " rows" << std::endl;
                     }
                 }, stmt);
             }

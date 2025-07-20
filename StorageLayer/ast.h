@@ -17,9 +17,32 @@ struct InsertStatement {
 struct SelectStatement {
 	std::string table_name;
 	std::vector<std::string> columns; // Columns to select, empty means all columns
+	std::optional<std::string> where_column; // Optional WHERE clause column
+	std::optional<std::string> where_operator; // Optional WHERE clause operator (e.g., '=', '>', '<', etc.)
+	std::optional<std::string> where_value; // Optional WHERE clause value
+	std::optional<std::string> order_by_column; // Optional ORDER BY column
+	std::optional<size_t> limit; // Optional LIMIT clause
 };
 
-using AST = std::variant<CreateTableStatement, InsertStatement, SelectStatement>;
+struct DeleteStatement
+{
+	std::string table_name;
+	std::optional<std::string> where_column;
+	std::optional<std::string> where_operator;
+	std::optional<std::string> where_value;
+};
+
+struct CTASStatement
+{
+	std::string table_name;
+	SelectStatement selectStmt;
+};
+
+using AST = std::variant<CreateTableStatement,
+	InsertStatement,
+	SelectStatement,
+	DeleteStatement,
+	CTASStatement>;
 
 
 CreateTableStatement parse_create_table_json(const nlohmann::json& json);

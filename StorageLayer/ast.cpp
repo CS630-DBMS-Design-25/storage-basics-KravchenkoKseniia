@@ -60,39 +60,63 @@ InsertStatement parse_insert_json(const nlohmann::json& json) {
 
 SelectStatement parse_select_json(const nlohmann::json& json) {
 	SelectStatement stmt;
-	bool isStar = false;
 
-	auto& targets = json.at("targetList");
+	stmt.table_name = json.at("fromClause").at(0).at("RangeVar").at("relname");
 
-	for (auto& element : targets) {
-		auto& resTarget = element.at("ResTarget").at("val");
+	bool star = false;
 
-		if (resTarget.contains("ColumnRef")) {
-			auto& ref = resTarget.at("ColumnRef");
-			auto& fields = ref.at("fields");
+	//projection
+	for (auto& target : json.at("targetList")) {
+		auto& res_target = target.at("ResTarget").at("val");
+		if (res_target.contains("ColumnRef")) {
+			auto& fields = res_target.at("ColumnRef").at("fields");
 
-			for (auto& field : fields) {
-				if (field.contains("A_Star")) {
-					isStar = true;
-					break;
-				}
-				else if (field.contains("String")) {
-					stmt.columns.push_back(field.at("String").at("sval").get<std::string>());
-				}
+			if (fields.at(0).contains("A_Star")) {
+				star = true;
+				break;
 			}
 
-			if (isStar) {
-				break;
+			for (auto& field: fields) {
+				if (field.contains("String")) {
+					stmt.columns.push_back(field.at("String").at("sval"));
+				}
 			}
 		}
 	}
 
-	if (isStar) {
+	if (star) {
 		stmt.columns.clear();
 	}
 
-	auto& fromClause = json.at("fromClause").at(0).at("RangeVar");
-	stmt.table_name = fromClause.at("relname").get<std::string>();
+	// WHERE
 
+	if (json.contains("whereClause")) {
+		auto& where_clause = json.at("whereClause").at("A_Expr");
+
+		stmt.where_column = where_clause.at("lexpr").at("ColumnRef").at("fields").at(0).at("String").at("sval");
+
+		stmt.where_operator = where_clause.at("name").at(0).at("String").at("sval");
+		
+		auto& rc = where_clause.at("rexpr").at("A_Const");
+		if (rc.contains("ival"))
+			stmt.where_value = std::to_string(rc.at("ival").at("ival").get<int>());
+		else
+			stmt.where_value = rc.at("sval").at("sval").get<std::string>();
+	}
+
+	// ORDER BY
+
+	if (json.contains("sortClause") && !stmt.columns.empty()) {
+		auto& sort_clause = json.at("sortClause").at(0).at("SortBy");
+		stmt.order_by_column = sort_clause.at("node").at("ColumnRef").at("fields").at(0).at("String").at("sval");
+	}
+
+	// LIMIT
+
+	if (json.contains("limitCount")) {
+		auto& limit_clause = json.at("limitCount").at("A_Const");
+		stmt.limit = limit_clause.at("ival").at("ival").get<int>();
+	}
+	
 	return stmt;
 }
