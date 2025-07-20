@@ -4,6 +4,16 @@
 #include <variant>
 #include "json.hpp"
 
+struct AggregateFunction {
+	std::string function_name;
+	std::string column_name;
+};
+
+struct ScalarFunction {
+	std::string function_name;
+	std::vector<std::string> arguments;
+};
+
 struct CreateTableStatement {
 	std::string table_name;
 	std::vector<std::pair<std::string, std::string>> columns;
@@ -22,6 +32,15 @@ struct SelectStatement {
 	std::optional<std::string> where_value; // Optional WHERE clause value
 	std::optional<std::string> order_by_column; // Optional ORDER BY column
 	std::optional<size_t> limit; // Optional LIMIT clause
+
+	std::optional<std::string> join_table; 
+	std::optional<std::string> join_left_column;
+	std::optional<std::string> join_right_column; 
+	bool use_hash_join = false;
+
+	std::vector<AggregateFunction> aggregate_functions;
+	std::vector<std::string> group_by;
+	std::vector<ScalarFunction> scalar_functions;
 };
 
 struct DeleteStatement

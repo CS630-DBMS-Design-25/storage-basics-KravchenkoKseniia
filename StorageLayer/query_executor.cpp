@@ -131,38 +131,89 @@ std::vector<std::vector<std::string>> QueryExecutor::executeSelect(const SelectS
 		};
 	}
 
-	auto raws = storage.scan(stmt.table_name, std::nullopt, std::nullopt, filter_func);
+	auto left_raws = storage.scan(stmt.table_name, std::nullopt, std::nullopt, filter_func);
 
 	std::vector<std::vector<std::string>> rows;
-	for (auto& r : raws) {
-		auto all = unpackRecord(schema, r);
-		if (!stmt.columns.empty()) {
-			std::vector<std::string> pr;
-			for (auto& column : stmt.columns) {
-				auto it = std::find_if(schema.columns.begin(), schema.columns.end(), [&](auto& c) {return c.name == column; });
-				int index = std::distance(schema.columns.begin(), it);
-				pr.push_back(all[index]);
-			}
+	TableSchema resultSchema;
 
-			rows.push_back(std::move(pr));
-		}
-		else {
-			rows.push_back(std::move(all));
-		}
+	if (stmt.join_table) {
+		TableSchema left_schema = storage.get_table_schema(stmt.table_name);
+		TableSchema right_schema = storage.get_table_schema(*stmt.join_table);
+		auto right_raws = storage.scan(*stmt.join_table, std::nullopt, std::nullopt, std::nullopt);
 
-		if (stmt.limit && rows.size() >= *stmt.limit) {
-			break;
+		rows = executeHashJoin(stmt, left_schema, right_schema, left_raws, right_raws);
+
+		resultSchema.columns.clear();
+
+		for (auto& col : left_schema.columns)
+			resultSchema.columns.push_back({ stmt.table_name + "." + col.name, col.type, col.length });
+
+		for (auto& col : right_schema.columns)
+			resultSchema.columns.push_back({ *stmt.join_table + "." + col.name, col.type, col.length });
+		
+	}
+	else {
+		resultSchema = storage.get_table_schema(stmt.table_name);
+		for (auto& raw : left_raws) {
+			rows.push_back(unpackRecord(resultSchema, raw));
 		}
 	}
 
-	if (stmt.order_by_column) {
-		int col_index = std::distance(stmt.columns.begin(),
-			std::find(stmt.columns.begin(), stmt.columns.end(), *stmt.order_by_column));
 
-		if (col_index >= 0) {
-			std::sort(rows.begin(), rows.end(),
-				[&](auto& a, auto& b) {return a[col_index] < b[col_index]; });
+	if (!stmt.aggregate_functions.empty()) {
+		rows = applyAgregation(stmt, schema, rows);
+	}
+
+	for (auto& spec : stmt.scalar_functions) {
+		int columnIndex = std::distance(
+			schema.columns.begin(),
+			std::find_if(schema.columns.begin(), schema.columns.end(),
+			[&](auto& c) { return c.name == spec.arguments[0]; }));
+
+		for (auto& row : rows) {
+			if (spec.function_name == "substr" && spec.arguments.size() == 3) {
+				int start = std::stoi(spec.arguments[1]);
+				int length = std::stoi(spec.arguments[2]);
+				if (columnIndex >= 0 && columnIndex < (int)row.size()) {
+					row.push_back(row[columnIndex].substr(start, length));
+				}
+			}
+			else if (spec.function_name == "upper" && columnIndex >= 0 && columnIndex < (int)row.size()) {
+				std::transform(row[columnIndex].begin(), row[columnIndex].end(), row[columnIndex].begin(), ::toupper);
+			}
+			else if (spec.function_name == "lower" && columnIndex >= 0 && columnIndex < (int)row.size()) {
+				std::transform(row[columnIndex].begin(), row[columnIndex].end(), row[columnIndex].begin(), ::tolower);
+			}
 		}
+	}
+
+	if (!stmt.columns.empty()) {
+		std::vector<std::vector<std::string>> projected;
+		std::vector<int> column_indices;
+
+		for(auto& col : stmt.columns) {
+
+			auto it = std::find_if(resultSchema.columns.begin(), resultSchema.columns.end(),
+				[&](const auto& c) { return c.name == col; });
+
+			if (it == resultSchema.columns.end()) {
+				throw std::runtime_error("Unknown column: " + col);
+			}
+
+			column_indices.push_back(std::distance(resultSchema.columns.begin(), it));
+		}
+
+		for (auto& row : rows) {
+			std::vector<std::string> projected_row;
+			for (int index : column_indices) {
+				if (index < 0 || index >= (int)row.size()) {
+					throw std::runtime_error("Column index out of bounds: " + std::to_string(index));
+				}
+				projected_row.push_back(row[index]);
+			}
+			projected.push_back(std::move(projected_row));
+		}
+		return projected;
 	}
 
 	return rows;
@@ -260,5 +311,117 @@ int QueryExecutor::executeCreateTableAs(const CTASStatement& stmt)
 	}
 
 	return (int)rows.size();
+}
+
+std::vector<std::vector<std::string>> QueryExecutor::executeHashJoin(const SelectStatement& stmt,
+	const TableSchema& leftSchema, const TableSchema& rightSchema,
+	std::vector<std::vector<uint8_t>>& leftData, std::vector<std::vector<uint8_t>>& rightData)
+{
+	int leftJoinIndex = std::distance(leftSchema.columns.begin(),
+		std::find_if(leftSchema.columns.begin(), leftSchema.columns.end(),
+			[&](auto& c) { return c.name == *stmt.join_left_column; }));
+
+	int rightJoinIndex = std::distance(rightSchema.columns.begin(),
+		std::find_if(rightSchema.columns.begin(), rightSchema.columns.end(),
+			[&](auto& c) { return c.name == *stmt.join_right_column; }));
+
+	const auto& buildRaws = (leftData.size() < rightData.size()) ? leftData : rightData;
+	const TableSchema& buildSchema = (leftData.size() < rightData.size()) ? leftSchema : rightSchema;
+	int buildIndex = (leftData.size() < rightData.size()) ? leftJoinIndex : rightJoinIndex;
+
+	std::unordered_map<std::string, std::vector<std::string>> hashTable;
+
+	for (auto& raw : buildRaws) {
+		auto fields = unpackRecord(buildSchema, raw);
+		if (fields.size() <= buildIndex) {
+			throw std::runtime_error("Join column index out of bounds");
+		}
+		hashTable.emplace(fields[buildIndex], fields);
+	}
+
+	std::vector<std::vector<std::string>> resultRows;
+	const auto& probeRaws = (leftData.size() < rightData.size()) ? rightData : leftData;
+	const TableSchema& probeSchema = (leftData.size() < rightData.size()) ? rightSchema : leftSchema;
+	int probeIndex = (leftData.size() < rightData.size()) ? rightJoinIndex : leftJoinIndex;
+
+	for (auto& raw : probeRaws) {
+		auto fields = unpackRecord(probeSchema, raw);
+		if (fields.size() <= probeIndex) {
+			throw std::runtime_error("Join column index out of bounds");
+		}
+		
+		auto rangeIt = hashTable.equal_range(fields[probeIndex]);
+		for (auto it = rangeIt.first; it != rangeIt.second; it++) {
+			std::vector<std::string> joinedRow;
+			const auto& buildRow = it->second;
+
+			bool buildLeft = leftData.size() < rightData.size();
+
+			if (buildLeft) {
+				joinedRow.insert(joinedRow.end(), buildRow.begin(), buildRow.end());
+				joinedRow.insert(joinedRow.end(), fields.begin(), fields.end());
+			}
+			else {
+				joinedRow.insert(joinedRow.end(), fields.begin(), fields.end());
+				joinedRow.insert(joinedRow.end(), buildRow.begin(), buildRow.end());
+			}
+
+			resultRows.push_back(std::move(joinedRow));
+		}
+	}
+
+	return resultRows;
+}
+
+std::vector<std::vector<std::string>> QueryExecutor::applyAgregation(const SelectStatement& stmt,
+	const TableSchema& schema, const std::vector<std::vector<std::string>>& rows)
+{
+	std::vector<int> groupByIndices;
+	for (auto& column : stmt.group_by) {
+		int index = std::distance(schema.columns.begin(),
+			std::find_if(schema.columns.begin(), schema.columns.end(),
+				[&](auto& c) { return c.name == column; }));
+		groupByIndices.push_back(index);
+	}
+
+	std::map <std::vector<std::string>, std::pair<std::vector<std::string>, std::string >> state;
+
+	auto& agg_func = stmt.aggregate_functions[0];
+
+	int aggIndex = std::distance(schema.columns.begin(),
+		std::find_if(schema.columns.begin(), schema.columns.end(),
+			[&](auto& c) { return c.name == agg_func.column_name; }));
+
+	for (auto& row : rows) {
+
+		std::vector<std::string> groupKey;
+		for (int index : groupByIndices) {
+			if (index < 0 || index >= (int)row.size()) {
+				throw std::runtime_error("Group by index out of bounds");
+			}
+			groupKey.push_back(row[index]);
+		}
+
+		auto it = state.find(groupKey);
+		
+		if (it == state.end()) {
+			state.emplace(groupKey, std::make_pair(groupKey, row[aggIndex]));
+		}
+		else {
+			if (row[aggIndex] > it->second.second) {
+				it->second.second = row[aggIndex];
+			}
+		}
+	}
+
+	std::vector<std::vector<std::string>> resultRows;
+
+	for (const auto& [key, value] : state) {
+		std::vector<std::string> resultRow = key;
+		resultRow.push_back(value.second); // Add the aggregated value
+		resultRows.push_back(std::move(resultRow));
+	}
+
+	return resultRows;
 };
 
