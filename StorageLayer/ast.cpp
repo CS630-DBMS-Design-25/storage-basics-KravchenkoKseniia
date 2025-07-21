@@ -61,14 +61,65 @@ InsertStatement parse_insert_json(const nlohmann::json& json) {
 SelectStatement parse_select_json(const nlohmann::json& json) {
 	SelectStatement stmt;
 
-	stmt.table_name = json.at("fromClause").at(0).at("RangeVar").at("relname");
+	// FROM
+
+	auto& from_clause = json.at("fromClause").at(0);
+
+	if(from_clause.contains("RangeVar")) {
+		stmt.table_name = from_clause.at("RangeVar").at("relname");
+	} else if (from_clause.contains("JoinExpr")) {
+		auto& join_expr = from_clause.at("JoinExpr");
+		stmt.table_name = join_expr.at("larg").at("RangeVar").at("relname").get<std::string>();
+		stmt.join_table = join_expr.at("rarg").at("RangeVar").at("relname").get<std::string>();
+		stmt.use_hash_join = true;
+
+		auto& qual = join_expr.at("quals").at("A_Expr");
+		auto& left_fields = qual.at("lexpr").at("ColumnRef").at("fields");
+		stmt.join_left_column = left_fields.back().at("String").at("sval").get<std::string>();
+		auto& right_fields = qual.at("rexpr").at("ColumnRef").at("fields");
+		stmt.join_right_column = right_fields.back().at("String").at("sval").get<std::string>();
+	}
 
 	bool star = false;
 
 	//projection
 	for (auto& target : json.at("targetList")) {
 		auto& res_target = target.at("ResTarget").at("val");
-		if (res_target.contains("ColumnRef")) {
+		if (res_target.contains("FuncCall")) {
+			std::string func_name = res_target.at("FuncCall").at("funcname").at(0).at("String").at("sval");
+			std::vector<std::string> args;
+
+			for (auto& arg : res_target.at("FuncCall").at("args")) {
+				if (arg.contains("ColumnRef")) {
+					args.push_back(arg.at("ColumnRef")
+						.at("fields").at(0).at("String").at("sval").get<std::string>());
+				}
+				else {
+					auto& aconst = arg.at("A_Const");
+					auto& ivalNode = aconst.at("ival");
+
+					int v = 0;
+
+					if (ivalNode.is_object() && ivalNode.contains("ival")) {
+						v = ivalNode.at("ival").get<int>();
+					}
+					else if (ivalNode.is_number_integer()) {
+						v = ivalNode.get<int>();
+					}
+					
+					args.push_back(std::to_string(v));
+
+				}
+			}
+
+			if (json.contains("groupClause")) {
+				stmt.aggregate_functions.push_back({ func_name, args[0] });
+			}
+			else {
+				stmt.scalar_functions.push_back({ func_name, args });
+			}
+		}
+		else if (res_target.contains("ColumnRef")) {
 			auto& fields = res_target.at("ColumnRef").at("fields");
 
 			if (fields.at(0).contains("A_Star")) {
@@ -76,11 +127,24 @@ SelectStatement parse_select_json(const nlohmann::json& json) {
 				break;
 			}
 
-			for (auto& field: fields) {
-				if (field.contains("String")) {
-					stmt.columns.push_back(field.at("String").at("sval"));
-				}
+			std::string column_name = fields.back().at("String").at("sval").get<std::string>();
+
+			if (fields.size() == 1) {
+				stmt.columns.push_back(column_name);
 			}
+			else {
+				std::string table_name = fields.front().at("String").at("sval").get<std::string>();
+				stmt.columns.push_back(table_name + "." + column_name);
+			}
+		}
+	}
+
+	// GROUP BY
+
+	if (json.contains("groupClause")) {
+		for (auto& group : json.at("groupClause")) {
+			auto& group_by = group.at("ColumnRef").at("fields").at(0).at("String").at("sval");
+			stmt.group_by.push_back(group_by);
 		}
 	}
 

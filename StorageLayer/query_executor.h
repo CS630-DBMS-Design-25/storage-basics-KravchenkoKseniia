@@ -25,5 +25,12 @@ public:
 	size_t executeDelete(const DeleteStatement& deleteStmt);
 
 	int executeCreateTableAs(const CTASStatement& ctasStmt);
+
+	std::vector<std::vector<std::string>> executeHashJoin(const SelectStatement& stmt,
+		const TableSchema& leftSchema, const TableSchema& rightSchema,
+		std::vector<std::vector<uint8_t>> &leftData, std::vector<std::vector<uint8_t>>& rightData);
+
+	std::vector<std::vector<std::string>> applyAgregation(const SelectStatement& stmt,
+		const TableSchema& schema, const std::vector<std::vector<std::string>>& rows);
 };
 
