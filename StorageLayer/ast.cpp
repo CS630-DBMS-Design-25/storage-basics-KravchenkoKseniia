@@ -90,9 +90,26 @@ SelectStatement parse_select_json(const nlohmann::json& json) {
 			std::vector<std::string> args;
 
 			for (auto& arg : res_target.at("FuncCall").at("args")) {
-				args.push_back(arg.contains("ColumnRef")
-					? arg.at("ColumnRef").at("fields").at(0).at("String").at("sval").get<std::string>()
-					: std::to_string(arg.at("A_Const").at("ival").at("ival").get<int>()));
+				if (arg.contains("ColumnRef")) {
+					args.push_back(arg.at("ColumnRef")
+						.at("fields").at(0).at("String").at("sval").get<std::string>());
+				}
+				else {
+					auto& aconst = arg.at("A_Const");
+					auto& ivalNode = aconst.at("ival");
+
+					int v = 0;
+
+					if (ivalNode.is_object() && ivalNode.contains("ival")) {
+						v = ivalNode.at("ival").get<int>();
+					}
+					else if (ivalNode.is_number_integer()) {
+						v = ivalNode.get<int>();
+					}
+					
+					args.push_back(std::to_string(v));
+
+				}
 			}
 
 			if (json.contains("groupClause")) {

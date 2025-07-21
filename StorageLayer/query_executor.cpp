@@ -80,6 +80,9 @@ int QueryExecutor::executeInsert(const InsertStatement& stmt)
 std::vector<std::vector<std::string>> QueryExecutor::executeSelect(const SelectStatement& stmt)
 {
 	auto schema = storage.get_table_schema(stmt.table_name);
+
+	auto selectColumns = stmt.columns;
+
 	if(schema.columns.empty()) {
 		throw std::runtime_error("Table schema not found for " + stmt.table_name);
 	}
@@ -162,6 +165,21 @@ std::vector<std::vector<std::string>> QueryExecutor::executeSelect(const SelectS
 
 	if (!stmt.aggregate_functions.empty()) {
 		rows = applyAgregation(stmt, schema, rows);
+
+		resultSchema.columns.clear();
+
+		for (auto& col : stmt.group_by) {
+			auto it = std::find_if(schema.columns.begin(), schema.columns.end(),
+				[&](auto& c) { return c.name == col; });
+			resultSchema.columns.push_back({ col, it->type, it->length });
+		}
+
+		for (auto& agg_func : stmt.aggregate_functions) {
+			std::string agg_col_name = agg_func.function_name + "(" + agg_func.column_name + ")";
+			resultSchema.columns.push_back({ agg_col_name, DataType::INT, sizeof(int) });
+			selectColumns.push_back(agg_col_name);
+		}
+
 	}
 
 	for (auto& spec : stmt.scalar_functions) {
@@ -170,28 +188,37 @@ std::vector<std::vector<std::string>> QueryExecutor::executeSelect(const SelectS
 			std::find_if(schema.columns.begin(), schema.columns.end(),
 			[&](auto& c) { return c.name == spec.arguments[0]; }));
 
+		std::string alias = spec.function_name + "(" + spec.arguments[0] + ")";
+		resultSchema.columns.push_back({ alias, DataType::VARCHAR, schema.columns[columnIndex].length });
+		selectColumns.push_back(alias);
+
 		for (auto& row : rows) {
+			std::string resultValue;
 			if (spec.function_name == "substr" && spec.arguments.size() == 3) {
 				int start = std::stoi(spec.arguments[1]);
 				int length = std::stoi(spec.arguments[2]);
 				if (columnIndex >= 0 && columnIndex < (int)row.size()) {
-					row.push_back(row[columnIndex].substr(start, length));
+					resultValue = row[columnIndex].substr(start, length);
 				}
 			}
 			else if (spec.function_name == "upper" && columnIndex >= 0 && columnIndex < (int)row.size()) {
+				resultValue = row[columnIndex];
 				std::transform(row[columnIndex].begin(), row[columnIndex].end(), row[columnIndex].begin(), ::toupper);
 			}
 			else if (spec.function_name == "lower" && columnIndex >= 0 && columnIndex < (int)row.size()) {
+				resultValue = row[columnIndex];
 				std::transform(row[columnIndex].begin(), row[columnIndex].end(), row[columnIndex].begin(), ::tolower);
 			}
+
+			row.push_back(std::move(resultValue));
 		}
 	}
 
-	if (!stmt.columns.empty()) {
+	if (!selectColumns.empty()) {
 		std::vector<std::vector<std::string>> projected;
 		std::vector<int> column_indices;
 
-		for(auto& col : stmt.columns) {
+		for(auto& col : selectColumns) {
 
 			auto it = std::find_if(resultSchema.columns.begin(), resultSchema.columns.end(),
 				[&](const auto& c) { return c.name == col; });
