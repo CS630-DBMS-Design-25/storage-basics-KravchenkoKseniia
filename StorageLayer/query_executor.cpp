@@ -203,11 +203,11 @@ std::vector<std::vector<std::string>> QueryExecutor::executeSelect(const SelectS
 			}
 			else if (spec.function_name == "upper" && columnIndex >= 0 && columnIndex < (int)row.size()) {
 				resultValue = row[columnIndex];
-				std::transform(row[columnIndex].begin(), row[columnIndex].end(), row[columnIndex].begin(), ::toupper);
+				std::transform(resultValue.begin(), resultValue.end(), resultValue.begin(), ::toupper);
 			}
 			else if (spec.function_name == "lower" && columnIndex >= 0 && columnIndex < (int)row.size()) {
 				resultValue = row[columnIndex];
-				std::transform(row[columnIndex].begin(), row[columnIndex].end(), row[columnIndex].begin(), ::tolower);
+				std::transform(resultValue.begin(), resultValue.end(), resultValue.begin(), ::tolower);
 			}
 
 			row.push_back(std::move(resultValue));
