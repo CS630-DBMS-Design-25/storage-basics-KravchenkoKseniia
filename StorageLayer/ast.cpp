@@ -110,9 +110,15 @@ SelectStatement parse_select_json(const nlohmann::json& json) {
 				break;
 			}
 
-			std::string table_name = fields.front().at("String").at("sval").get<std::string>();
 			std::string column_name = fields.back().at("String").at("sval").get<std::string>();
-			stmt.columns.push_back(table_name + "." + column_name);
+
+			if (fields.size() == 1) {
+				stmt.columns.push_back(column_name);
+			}
+			else {
+				std::string table_name = fields.front().at("String").at("sval").get<std::string>();
+				stmt.columns.push_back(table_name + "." + column_name);
+			}
 		}
 	}
 
