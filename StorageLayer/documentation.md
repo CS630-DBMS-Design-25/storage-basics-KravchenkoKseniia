@@ -92,3 +92,27 @@ It inspects top-level JSON key to determine the type of statement and constructs
 - `executeSelect()` for `SelectStatement`.
 - `executeDelete()` for `DeleteStatement`.
 - `executeCreateTableAs()` for `CreateTableStatement`.
+
+## Additional Features
+
+- **Hash Join**: Efficient in-memory join operation for combining records from two tables based on a common key that builds a hash table on the smaller relation 
+for fast matching.
+- **Aggregation**: Supports basic aggregation function MAX over grouped data, allowing for summarization of records based on a specified key.
+- **Scalar Functions**: Supports scalar functions like `UPPER(col)`, `LOWER(col)`, and `SUBSTR(col, start, len)` for string manipulation, enhancing query capabilities.
+- **Vectorized Execution**: Implements vectorized execution for improved performance, processing multiple records in batches rather than one at a time.
+- **Predicate Pushdown**: Optimizes query execution by pushing down predicates to the storage layer, reducing the amount of data processed in memory.
+
+## Test query 
+examples
+```
+--query "SELECT employees.name, departments.name FROM employees HASH JOIN departments ON employees.dept_id = departments.id;"
+```
+```
+--query "SELECT id, name, salary FROM employees WHERE salary >= 7500;"
+```
+```
+ --query "SELECT dept_id, MAX(salary) FROM employees GROUP BY dept_id;"
+```
+```
+--query "SELECT substr(name, 0, 3) FROM employees;"
+```
